@@ -1,0 +1,11 @@
+{
+	"id": "vault-llm-assistant",
+	"name": "Vault LLM Assistant",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "An Obsidian plugin that uses LLM to answer questions about your vault",
+	"author": "",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}
