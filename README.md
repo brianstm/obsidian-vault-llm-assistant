@@ -4,6 +4,12 @@
 Query your Obsidian vault using AI, get contextual answers with proper citations, and create new notes on specific topics.
 </div>
 
+<div align="center">
+  <a href="https://github.com/brianstm/obsidian-vault-llm-assistant/releases">
+    <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />
+  </a>
+</div>
+
 ## Features
 
 -   Ask questions about your vault's content and get AI-generated answers
@@ -60,8 +66,8 @@ npm install
 
 ### Modes
 
-- **Query Mode**: Ask questions about your vault's content and get AI-generated answers
-- **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
+-   **Query Mode**: Ask questions about your vault's content and get AI-generated answers
+-   **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
 
 ### Response Actions
 

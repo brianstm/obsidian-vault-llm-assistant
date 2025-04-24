@@ -13,13 +13,10 @@ import {
 	PluginSettingTab,
 	Setting,
 	TFile,
-	TFolder,
 	View,
 	WorkspaceLeaf,
 	requestUrl,
-	RequestUrlParam,
 	RequestUrlResponse,
-	setIcon,
 	TextComponent,
 	SliderComponent,
 } from "obsidian";
@@ -73,22 +70,6 @@ export default class VaultLLMAssistant extends Plugin {
 
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.setText("Vault LLM Assistant");
-
-		// Add styles for the new info message
-		const styleEl = document.createElement("style");
-		styleEl.id = "vault-llm-assistant-styles";
-		styleEl.textContent = `
-			.vault-llm-info-message {
-				padding: 10px;
-				background-color: var(--background-secondary);
-				border-radius: 5px;
-				margin-bottom: 15px;
-				color: var(--text-muted);
-				font-style: italic;
-				border-left: 3px solid var(--interactive-accent);
-			}
-		`;
-		document.head.appendChild(styleEl);
 
 		const ribbonIconEl = this.addRibbonIcon(
 			"bot",
@@ -235,8 +216,9 @@ export default class VaultLLMAssistant extends Plugin {
 
 	/**
 	 * Main method to query the configured LLM with vault content
+	 * Builds different prompts based on the current mode (query or create) and whether vault content is used
 	 *
-	 * @param query - User's question
+	 * @param query - User's question or topic
 	 * @param vaultContent - Vault content to use as context
 	 * @param currentFilePath - Path of current file (optional)
 	 * @returns The LLM's response as a string
@@ -249,8 +231,10 @@ export default class VaultLLMAssistant extends Plugin {
 		try {
 			let prompt = "";
 
+			// Build different prompts based on mode and whether to use vault content
 			if (this.settings.mode === "query") {
 				if (this.settings.useVaultContent) {
+					// Query mode with vault context
 					prompt = `You are a helpful assistant for the user's Obsidian vault. 
 You have access to the user's notes which are provided below. 
 Please answer the user's question based on the information in these notes.
@@ -327,7 +311,7 @@ Topic to create a note about: ${query}`;
 	 * Queries OpenAI's API with the prepared prompt
 	 *
 	 * @param prompt - Formatted prompt with system instructions and context
-	 * @returns The model's response
+	 * @returns The model's response or a formatted error message
 	 */
 	async queryGPT(prompt: string): Promise<string> {
 		try {
@@ -363,7 +347,48 @@ Topic to create a note about: ${query}`;
 			return "No response generated.";
 		} catch (error) {
 			console.error("Error querying OpenAI:", error);
-			return `Error: ${error.message}`;
+
+			// Format error message in a more user-friendly way with specific handling for common HTTP status codes
+			let errorMessage = "Error querying OpenAI: ";
+
+			if (error.status) {
+				switch (error.status) {
+					case 401:
+						errorMessage +=
+							"Authentication error. Please check your API key.";
+						break;
+					case 403:
+						errorMessage +=
+							"Permission denied. Your API key may not have access to this model.";
+						break;
+					case 404:
+						errorMessage +=
+							"The specified model was not found. It might be deprecated or unavailable.";
+						break;
+					case 429:
+						errorMessage +=
+							"Rate limit exceeded or quota exceeded. Please check your OpenAI plan and limits.";
+						break;
+					case 500:
+					case 502:
+					case 503:
+					case 504:
+						errorMessage +=
+							"OpenAI server error. Please try again later.";
+						break;
+					default:
+						errorMessage += `Status ${error.status}: ${
+							error.message || "Unknown error"
+						}`;
+				}
+			} else if (error.message) {
+				// For network errors or other exceptions
+				errorMessage += error.message;
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
 		}
 	}
 
@@ -398,10 +423,63 @@ Topic to create a note about: ${query}`;
 			if (jsonResponse.candidates && jsonResponse.candidates.length > 0) {
 				return jsonResponse.candidates[0].content.parts[0].text;
 			}
+
+			// Check for errors in the response
+			if (jsonResponse.error) {
+				return `Gemini API Error: ${
+					jsonResponse.error.message || "Unknown error"
+				}`;
+			}
+
 			return "No response generated.";
 		} catch (error) {
 			console.error("Error querying Gemini:", error);
-			return `Error: ${error.message}`;
+
+			// Format error message in a more user-friendly way
+			let errorMessage = "Error querying Gemini: ";
+
+			if (error.status) {
+				switch (error.status) {
+					case 400:
+						errorMessage +=
+							"Bad request. Check your model name and request format.";
+						break;
+					case 401:
+						errorMessage +=
+							"Authentication error. Please check your API key.";
+						break;
+					case 403:
+						errorMessage +=
+							"Permission denied. Your API key may not have access to this model.";
+						break;
+					case 404:
+						errorMessage +=
+							"The specified model was not found. It might be deprecated or unavailable.";
+						break;
+					case 429:
+						errorMessage +=
+							"Rate limit exceeded or quota exceeded. Please check your Google AI Studio quota.";
+						break;
+					case 500:
+					case 502:
+					case 503:
+					case 504:
+						errorMessage +=
+							"Gemini server error. Please try again later.";
+						break;
+					default:
+						errorMessage += `Status ${error.status}: ${
+							error.message || "Unknown error"
+						}`;
+				}
+			} else if (error.message) {
+				// For network errors or other exceptions
+				errorMessage += error.message;
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
 		}
 	}
 
@@ -533,7 +611,10 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 		}
 	}
 
-	// Add this new helper function to clean markdown responses
+	/**
+	 * Helper function to clean up markdown responses from LLMs
+	 * Removes markdown fences and explanatory text that sometimes appears in responses
+	 */
 	cleanMarkdownResponse(text: string): string {
 		// Remove ```md or ```markdown at the beginning
 		text = text.replace(/^```m(?:d|arkdown)\s*\n/i, "");
@@ -642,7 +723,9 @@ class QueryModal extends Modal {
 
 	/**
 	 * Processes the query when submitted
-	 * Activates the assistant view and passes the query
+	 * Handles two different modes:
+	 * 1. Query mode: Opens the assistant view and shows the response with actions
+	 * 2. Create mode: Directly creates a new note without showing the assistant view
 	 */
 	async processQuery() {
 		if (!this.query.trim()) {
@@ -681,7 +764,7 @@ class QueryModal extends Modal {
 				view.setQuery(this.query, this.currentFile);
 			}
 		} else {
-			// Create note mode - generate content and create a note directly
+			// Create note mode - generate content and create a note directly without the UI
 			try {
 				// Skip vault scanning if useVaultContent is false
 				const vaultContent = this.plugin.settings.useVaultContent
@@ -700,13 +783,42 @@ class QueryModal extends Modal {
 					this.currentFile ? this.currentFile.path : null
 				);
 
+				// Check if the content is an error message
+				if (
+					content.startsWith("Error querying ") ||
+					content.startsWith("Gemini API Error:")
+				) {
+					// Format error message nicely
+					let errorMessage = "Failed to create note: ";
+
+					// Extract the main error details
+					if (content.includes(":")) {
+						const [_, errorDetails] = content.split(":", 2);
+						errorMessage += errorDetails.trim();
+					} else {
+						errorMessage += content;
+					}
+
+					// Show as a notice and return early
+					new Notice(errorMessage, 10000); // Show for 10 seconds
+					return;
+				}
+
 				// Generate title
 				let title = this.query;
 				if (this.plugin.settings.generateTitlesWithLLM) {
-					title = await this.plugin.generateTitleForResponse(
-						this.query,
-						content
-					);
+					try {
+						title = await this.plugin.generateTitleForResponse(
+							this.query,
+							content
+						);
+					} catch (titleError) {
+						console.error("Error generating title:", titleError);
+						new Notice(
+							"Could not generate a title, using your topic text instead."
+						);
+						// Continue with the query as the title
+					}
 				}
 
 				// Create note
@@ -721,7 +833,26 @@ class QueryModal extends Modal {
 				}
 			} catch (error) {
 				console.error("Error creating note:", error);
-				new Notice(`Error creating note: ${error.message}`);
+
+				// Create a more user-friendly error message
+				let errorMessage = "Error creating note: ";
+
+				if (error.message) {
+					// Check for common error patterns
+					if (error.message.includes("already exists")) {
+						errorMessage +=
+							"A note with this title already exists.";
+					} else if (error.message.includes("permission")) {
+						errorMessage +=
+							"Permission denied. Check your folder permissions.";
+					} else {
+						errorMessage += error.message;
+					}
+				} else {
+					errorMessage += "An unknown error occurred.";
+				}
+
+				new Notice(errorMessage, 7000); // Show for 7 seconds
 			}
 		}
 	}
@@ -945,8 +1076,9 @@ class VaultLLMAssistantView extends View {
 
 	/**
 	 * Processes a new query and updates the view
+	 * This is the core function that handles scanning the vault, querying the LLM, and displaying results
 	 *
-	 * @param query - User's question
+	 * @param query - User's question or topic
 	 * @param currentFile - Current file for context (optional)
 	 */
 	async setQuery(query: string, currentFile: TFile | null = null) {
@@ -1076,6 +1208,68 @@ class VaultLLMAssistantView extends View {
 			// Replace loading with the response
 			loadingEl.remove();
 
+			// Enhanced error handling that displays user-friendly error messages with troubleshooting tips
+			// If the response starts with an error message, we display it in a nicely formatted container
+			if (
+				response.startsWith("Error querying ") ||
+				response.startsWith("Gemini API Error:")
+			) {
+				// Create a nicely formatted error message
+				const errorContainer = responseContainer.createEl("div", {
+					cls: "vault-llm-error-message",
+				});
+
+				// Split the error message for better formatting
+				if (response.includes(":")) {
+					const [errorTitle, errorDetails] = response.split(":", 2);
+
+					errorContainer.createEl("div", {
+						cls: "vault-llm-error-title",
+						text: errorTitle + ":",
+					});
+
+					errorContainer.createEl("div", {
+						cls: "vault-llm-error-details",
+						text: errorDetails.trim(),
+					});
+
+					// Add troubleshooting tips based on error
+					if (response.includes("API key")) {
+						errorContainer.createEl("div", {
+							text: "→ Check your API key in settings and verify it's correct.",
+							cls: "vault-llm-error-help",
+						});
+					} else if (
+						response.includes("Rate limit") ||
+						response.includes("quota")
+					) {
+						errorContainer.createEl("div", {
+							text: "→ You may need to wait or upgrade your plan.",
+							cls: "vault-llm-error-help",
+						});
+					} else if (response.includes("server error")) {
+						errorContainer.createEl("div", {
+							text: "→ The service might be temporarily unavailable. Try again later.",
+							cls: "vault-llm-error-help",
+						});
+					}
+				} else {
+					errorContainer.setText(response);
+				}
+
+				// Add a retry button
+				const retryButton = responseContainer.createEl("button", {
+					text: "Try Again",
+					cls: "vault-llm-action-button",
+				});
+
+				retryButton.addEventListener("click", () => {
+					this.setQuery(query, currentFile);
+				});
+
+				return;
+			}
+
 			// Create container for the response with some styling
 			const answerContainer = responseContainer.createEl("div", {
 				cls: "vault-llm-answer",
@@ -1086,7 +1280,7 @@ class VaultLLMAssistantView extends View {
 				response,
 				answerContainer,
 				currentFile ? currentFile.path : "/",
-				this.leaf as unknown as Component
+				new Component()
 			);
 
 			// Make content selectable

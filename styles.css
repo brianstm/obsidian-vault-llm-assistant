@@ -115,6 +115,46 @@
 	cursor: text;
 }
 
+/* Notification and status messages */
+.vault-llm-info-message {
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 5px;
+	margin-bottom: 15px;
+	color: var(--text-muted);
+	font-style: italic;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+/* Error message styling with improved readability */
+.vault-llm-error-message {
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 5px;
+	margin-bottom: 15px;
+	color: var(--text-error);
+	border-left: 3px solid var(--text-error);
+}
+
+.vault-llm-error-title {
+	font-weight: bold;
+	margin-bottom: 5px;
+}
+
+.vault-llm-error-details {
+	margin-top: 5px;
+	font-size: 0.9em;
+}
+
+.vault-llm-error-help {
+	margin-top: 10px;
+	font-style: italic;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 8px;
+}
+
 /* Action buttons */
 .vault-llm-action-buttons {
 	display: flex;
@@ -155,6 +195,7 @@
 	margin: 8px 0;
 }
 
+/* Legacy error style - maintained for backward compatibility */
 .vault-llm-error {
 	padding: 15px;
 	border-radius: 6px;
