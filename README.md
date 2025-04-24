@@ -1,12 +1,15 @@
 # <div align="center">Vault LLM Assistant for Obsidian</div>
 
 <div align="center">
-Query your Obsidian vault using AI and get contextual answers with proper citations.
+Query your Obsidian vault using AI, get contextual answers with proper citations, and create new notes on specific topics.
 </div>
 
 ## Features
 
 -   Ask questions about your vault's content and get AI-generated answers
+-   Create comprehensive notes on any topic with optional vault context integration
+-   Toggle between Query mode and Create mode with a simple dropdown
+-   Choose whether to include vault content in your prompts
 -   Results include citations and links back to your original notes
 -   Copy results as text or markdown with one click
 -   Create new notes from responses with AI-generated titles
@@ -49,9 +52,16 @@ npm install
 ### Basic Usage
 
 1. Click the Vault LLM Assistant icon in the left sidebar ribbon
-2. Type your question about your vault's content
-3. Click "Ask" or press Ctrl+Enter (Cmd+Enter on Mac)
-4. View the AI-generated response with citations to your notes
+2. Select your desired mode from the dropdown (Query or Create)
+3. Optionally toggle "Use vault content" to include or exclude your vault's content in prompts
+4. Type your question or topic
+5. Click "Ask" (in Query mode) or "Create" (in Create mode) or press Ctrl+Enter (Cmd+Enter on Mac)
+6. View the AI-generated response with citations to your notes
+
+### Modes
+
+- **Query Mode**: Ask questions about your vault's content and get AI-generated answers
+- **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
 
 ### Response Actions
 
@@ -70,6 +80,8 @@ Access plugin settings via Settings → Community Plugins → Vault LLM Assistan
 -   **API Key**: Enter your API key for the selected provider
 -   **Model**: Select which AI model to use
 -   **Max Tokens & Temperature**: Control response length and creativity
+-   **Use Vault Content in Prompts**: Toggle whether to include vault content in AI prompts
+-   **Mode**: Select the current mode (Query or Create)
 -   **Default Folder for New Notes**: Set where new notes will be saved
 -   **Generate Note Titles with LLM**: Toggle whether to use AI for generating note titles
 -   **Include/Exclude Folders**: Specify which folders to include or exclude from scanning

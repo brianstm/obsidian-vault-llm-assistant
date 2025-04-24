@@ -25,10 +25,6 @@ import {
 } from "obsidian";
 import { MarkdownRenderer } from "obsidian";
 
-// API clients
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import OpenAI from "openai";
-
 /**
  * Plugin Settings Interface
  * Defines all configurable options for the plugin
@@ -45,6 +41,8 @@ interface VaultLLMAssistantSettings {
 	excludeFolder: string[]; // Folders to exclude from scanning
 	newNoteFolder: string; // Default folder path for creating new notes from responses
 	generateTitlesWithLLM: boolean; // Whether to use LLM to generate note titles
+	useVaultContent: boolean; // Whether to include vault content in prompts
+	mode: "query" | "create"; // Current mode: query or create notes
 }
 
 /**
@@ -62,6 +60,8 @@ const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	excludeFolder: [],
 	newNoteFolder: "", // Default to root of vault
 	generateTitlesWithLLM: true, // Default to using LLM for titles
+	useVaultContent: true, // Default to using vault content
+	mode: "query", // Default to query mode
 };
 
 export default class VaultLLMAssistant extends Plugin {
@@ -73,6 +73,22 @@ export default class VaultLLMAssistant extends Plugin {
 
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.setText("Vault LLM Assistant");
+
+		// Add styles for the new info message
+		const styleEl = document.createElement("style");
+		styleEl.id = "vault-llm-assistant-styles";
+		styleEl.textContent = `
+			.vault-llm-info-message {
+				padding: 10px;
+				background-color: var(--background-secondary);
+				border-radius: 5px;
+				margin-bottom: 15px;
+				color: var(--text-muted);
+				font-style: italic;
+				border-left: 3px solid var(--interactive-accent);
+			}
+		`;
+		document.head.appendChild(styleEl);
 
 		const ribbonIconEl = this.addRibbonIcon(
 			"bot",
@@ -163,6 +179,11 @@ export default class VaultLLMAssistant extends Plugin {
 		additionalContext: string = "",
 		currentFile: TFile | null = null
 	): Promise<string> {
+		// If vault content is disabled, return empty string
+		if (!this.settings.useVaultContent) {
+			return additionalContext ? additionalContext : "";
+		}
+
 		const vault = this.app.vault;
 		const files: TFile[] = [];
 
@@ -226,7 +247,11 @@ export default class VaultLLMAssistant extends Plugin {
 		currentFilePath: string | null = null
 	): Promise<string> {
 		try {
-			const prompt = `You are a helpful assistant for the user's Obsidian vault. 
+			let prompt = "";
+
+			if (this.settings.mode === "query") {
+				if (this.settings.useVaultContent) {
+					prompt = `You are a helpful assistant for the user's Obsidian vault. 
 You have access to the user's notes which are provided below. 
 Please answer the user's question based on the information in these notes.
 When referencing content from notes, cite the source file using the format [[file_path]].
@@ -240,6 +265,41 @@ ${vaultContent}
 ${currentFilePath ? `Current file: ${currentFilePath}` : ""}
 
 User's Question: ${query}`;
+				} else {
+					prompt = `You are a helpful assistant. Please answer the following question in a clear and concise manner.
+Format your responses in Markdown. Format code blocks with the appropriate language annotation for syntax highlighting.
+
+User's Question: ${query}`;
+				}
+			} else if (this.settings.mode === "create") {
+				if (this.settings.useVaultContent) {
+					prompt = `You are a helpful assistant for creating new notes in the user's Obsidian vault. 
+You have access to the user's existing notes which are provided below. 
+Please create a comprehensive note about the requested topic, incorporating relevant information from the existing notes when applicable.
+When referencing content from existing notes, cite the source file using the format [[file_path]].
+
+IMPORTANT: Respond ONLY with the note content directly, without any additional text, introductions, or wrapper. DO NOT include \`\`\`md at the beginning or \`\`\` at the end.
+Use proper Markdown formatting with headings, lists, and code blocks as needed.
+If you quote or reference content from the vault, make sure to include proper citations, you may include the specific part of the file that you are referencing using the format [[file_path#title_of_the_section_you_are_referencing]] (Do not change the title of the section you are referencing, use the same title as it is in the file with the same capitalization).
+For any code examples, use proper markdown code blocks with language specification.
+
+User's Notes:
+${vaultContent}
+
+${currentFilePath ? `Current file: ${currentFilePath}` : ""}
+
+Topic to create a note about: ${query}`;
+				} else {
+					prompt = `You are a helpful assistant for creating new notes. 
+Please create a comprehensive note about the requested topic.
+
+IMPORTANT: Respond ONLY with the note content directly, without any additional text, introductions, or wrapper. DO NOT include \`\`\`md at the beginning or \`\`\` at the end.
+Use proper Markdown formatting with headings, lists, and code blocks as needed.
+For any code examples, use proper markdown code blocks with language specification.
+
+Topic to create a note about: ${query}`;
+				}
+			}
 
 			let response: string;
 
@@ -249,6 +309,11 @@ User's Question: ${query}`;
 				response = await this.queryGemini(prompt);
 			} else {
 				throw new Error("Unknown model provider");
+			}
+
+			// Strip markdown fences if they exist in create mode
+			if (this.settings.mode === "create") {
+				response = this.cleanMarkdownResponse(response);
 			}
 
 			return response;
@@ -266,42 +331,36 @@ User's Question: ${query}`;
 	 */
 	async queryGPT(prompt: string): Promise<string> {
 		try {
-			const openai = new OpenAI({
-				apiKey: this.settings.apiKey,
-				dangerouslyAllowBrowser: true,
-			});
-
-			// Check for newer models that need special params
-			const isNewerModel = [
-				"gpt-4.1",
-				"gpt-4.1-mini",
-				"gpt-4.1-nano",
-				"gpt-4o-mini",
-			].includes(this.settings.model);
-
-			const response = await openai.chat.completions.create({
-				model: this.settings.model,
-				messages: [
-					{
-						role: "system",
-						content:
-							"You are a helpful assistant that answers questions about the user's Obsidian vault content.",
-					},
-					{
-						role: "user",
-						content: prompt,
-					},
-				],
-				max_tokens: this.settings.maxTokens,
-				temperature: this.settings.temperature,
-				...(isNewerModel && {
-					response_format: { type: "text" },
+			const response = await requestUrl({
+				url: "https://api.openai.com/v1/chat/completions",
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${this.settings.apiKey}`,
+				},
+				body: JSON.stringify({
+					model: this.settings.model,
+					messages: [
+						{
+							role: "system",
+							content:
+								"You are a helpful assistant that answers questions about the user's Obsidian vault content.",
+						},
+						{
+							role: "user",
+							content: prompt,
+						},
+					],
+					max_tokens: this.settings.maxTokens,
+					temperature: this.settings.temperature,
 				}),
 			});
 
-			return (
-				response.choices[0].message.content || "No response generated."
-			);
+			const jsonResponse = response.json;
+			if (jsonResponse.choices && jsonResponse.choices.length > 0) {
+				return jsonResponse.choices[0].message.content;
+			}
+			return "No response generated.";
 		} catch (error) {
 			console.error("Error querying OpenAI:", error);
 			return `Error: ${error.message}`;
@@ -316,12 +375,18 @@ User's Question: ${query}`;
 	 */
 	async queryGemini(prompt: string): Promise<string> {
 		try {
-			const genAI = new GoogleGenerativeAI(this.settings.apiKey);
-			const isPreviewModel = this.settings.model.includes("preview");
-
-			const model = genAI.getGenerativeModel({
-				model: this.settings.model,
-				...(isPreviewModel && {
+			const response = await requestUrl({
+				url: `https://generativelanguage.googleapis.com/v1beta/models/${this.settings.model}:generateContent?key=${this.settings.apiKey}`,
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					contents: [
+						{
+							parts: [{ text: prompt }],
+						},
+					],
 					generationConfig: {
 						maxOutputTokens: this.settings.maxTokens,
 						temperature: this.settings.temperature,
@@ -329,9 +394,11 @@ User's Question: ${query}`;
 				}),
 			});
 
-			const result = await model.generateContent(prompt);
-			const response = result.response;
-			return response.text() || "No response generated.";
+			const jsonResponse = response.json;
+			if (jsonResponse.candidates && jsonResponse.candidates.length > 0) {
+				return jsonResponse.candidates[0].content.parts[0].text;
+			}
+			return "No response generated.";
 		} catch (error) {
 			console.error("Error querying Gemini:", error);
 			return `Error: ${error.message}`;
@@ -388,19 +455,19 @@ User's Question: ${query}`;
 			const cleanTitle = title
 				.replace(/[\\/:*?"<>|]/g, "") // Remove invalid file characters
 				.trim();
-				
+
 			const fileName =
 				cleanTitle ||
 				`LLM Response ${new Date().toISOString().slice(0, 10)}`;
-			
+
 			// Setup folder path
 			let folderPath = this.settings.newNoteFolder.trim();
 			if (folderPath && !folderPath.endsWith("/")) {
 				folderPath += "/";
 			}
-			
+
 			const fullPath = `${folderPath}${fileName}.md`;
-			
+
 			// Create folder if needed
 			if (folderPath) {
 				const folderExists = await this.app.vault.adapter.exists(
@@ -410,11 +477,11 @@ User's Question: ${query}`;
 					await this.app.vault.createFolder(folderPath);
 				}
 			}
-			
+
 			// Create and open file
 			const file = await this.app.vault.create(fullPath, content);
 			this.app.workspace.openLinkText(file.path, "", false);
-			
+
 			return file;
 		} catch (error) {
 			console.error("Error creating note:", error);
@@ -431,7 +498,7 @@ User's Question: ${query}`;
 	 * @returns A suitable title
 	 */
 	async generateTitleForResponse(
-		query: string, 
+		query: string,
 		response: string
 	): Promise<string> {
 		try {
@@ -455,7 +522,7 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 			const cleanTitle = titleResponse
 				.replace(/^["']|["']$|[.:]$/g, "") // Remove quotes and trailing punctuation
 				.trim();
-				
+
 			return (
 				cleanTitle ||
 				`LLM Response ${new Date().toISOString().slice(0, 10)}`
@@ -464,6 +531,25 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 			console.error("Error generating title:", error);
 			return `LLM Response ${new Date().toISOString().slice(0, 10)}`;
 		}
+	}
+
+	// Add this new helper function to clean markdown responses
+	cleanMarkdownResponse(text: string): string {
+		// Remove ```md or ```markdown at the beginning
+		text = text.replace(/^```m(?:d|arkdown)\s*\n/i, "");
+
+		// Remove ``` at the end
+		text = text.replace(/\n```\s*$/i, "");
+
+		// Remove any explanatory text before the actual markdown content
+		const mdFenceMatch = text.match(/```m(?:d|arkdown)/i);
+		if (mdFenceMatch && mdFenceMatch.index) {
+			text = text.substring(mdFenceMatch.index);
+			// Then remove the fence itself
+			text = text.replace(/```m(?:d|arkdown)\s*\n/i, "");
+		}
+
+		return text;
 	}
 }
 
@@ -494,12 +580,20 @@ class QueryModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.addClass("vault-llm-assistant-modal");
-		contentEl.createEl("h2", { text: "Enter your question" });
+
+		const title =
+			this.plugin.settings.mode === "query"
+				? "Enter your question"
+				: "Enter a topic to create a note about";
+		contentEl.createEl("h2", { text: title });
 
 		// Create query input
 		this.inputEl = contentEl.createEl("textarea", {
 			attr: {
-				placeholder: "What would you like to ask about your vault?",
+				placeholder:
+					this.plugin.settings.mode === "query"
+						? "What would you like to ask about your vault?"
+						: "What topic would you like to create a note about?",
 				rows: "4",
 			},
 		});
@@ -521,7 +615,7 @@ class QueryModal extends Modal {
 
 		// Create submit button
 		const submitButton = buttonContainer.createEl("button", {
-			text: "Ask",
+			text: this.plugin.settings.mode === "query" ? "Ask" : "Create",
 		});
 		submitButton.style.marginLeft = "10px";
 		submitButton.classList.add("mod-cta");
@@ -552,27 +646,83 @@ class QueryModal extends Modal {
 	 */
 	async processQuery() {
 		if (!this.query.trim()) {
-			new Notice("Please enter a question");
+			new Notice(
+				this.plugin.settings.mode === "query"
+					? "Please enter a question"
+					: "Please enter a topic to create a note about"
+			);
 			return;
 		}
 
-		new Notice("Processing your question...");
+		const noticeText =
+			this.plugin.settings.mode === "query"
+				? "Processing your question..."
+				: "Generating note content...";
 
-		// Show the assistant view
-		await this.plugin.activateView();
+		new Notice(noticeText);
 
-		// Get access to the view
-		const leaves = this.app.workspace.getLeavesOfType(
-			"vault-llm-assistant-view"
-		);
-		if (leaves.length === 0) {
-			new Notice("Could not open the assistant view");
-			return;
-		}
+		// For query mode, show the assistant view
+		// For create mode, generate content and create a note directly
+		if (this.plugin.settings.mode === "query") {
+			// Show the assistant view
+			await this.plugin.activateView();
 
-		const view = leaves[0].view as VaultLLMAssistantView;
-		if (view instanceof VaultLLMAssistantView) {
-			view.setQuery(this.query, this.currentFile);
+			// Get access to the view
+			const leaves = this.app.workspace.getLeavesOfType(
+				"vault-llm-assistant-view"
+			);
+			if (leaves.length === 0) {
+				new Notice("Could not open the assistant view");
+				return;
+			}
+
+			const view = leaves[0].view as VaultLLMAssistantView;
+			if (view instanceof VaultLLMAssistantView) {
+				view.setQuery(this.query, this.currentFile);
+			}
+		} else {
+			// Create note mode - generate content and create a note directly
+			try {
+				// Skip vault scanning if useVaultContent is false
+				const vaultContent = this.plugin.settings.useVaultContent
+					? await this.plugin.scanVault("", this.currentFile || null)
+					: "";
+
+				// Show an info message if vault content is not being used
+				if (!this.plugin.settings.useVaultContent) {
+					new Notice("Creating note without using vault content");
+				}
+
+				// Generate content
+				const content = await this.plugin.queryLLM(
+					this.query,
+					vaultContent,
+					this.currentFile ? this.currentFile.path : null
+				);
+
+				// Generate title
+				let title = this.query;
+				if (this.plugin.settings.generateTitlesWithLLM) {
+					title = await this.plugin.generateTitleForResponse(
+						this.query,
+						content
+					);
+				}
+
+				// Create note
+				const noteContent = `# ${title}\n\n${content}`;
+				const file = await this.plugin.createNoteFromContent(
+					title,
+					noteContent
+				);
+
+				if (file) {
+					new Notice(`Note created: ${file.name}`);
+				}
+			} catch (error) {
+				console.error("Error creating note:", error);
+				new Notice(`Error creating note: ${error.message}`);
+			}
 		}
 	}
 
@@ -654,6 +804,56 @@ class VaultLLMAssistantView extends View {
 			cls: "vault-llm-options-container",
 		});
 
+		// Mode toggle
+		const modeToggle = optionsContainer.createDiv({
+			cls: "vault-llm-option-toggle",
+		});
+
+		const modeSelect = modeToggle.createEl("select", {
+			attr: {
+				id: "mode-select",
+			},
+		});
+
+		modeSelect.createEl("option", {
+			value: "query",
+			text: "Query Mode",
+			attr: {
+				selected:
+					this.plugin.settings.mode === "query" ? "selected" : null,
+			},
+		});
+
+		modeSelect.createEl("option", {
+			value: "create",
+			text: "Create Mode",
+			attr: {
+				selected:
+					this.plugin.settings.mode === "create" ? "selected" : null,
+			},
+		});
+
+		modeSelect.addEventListener("change", async (e) => {
+			const target = e.target as HTMLSelectElement;
+			this.plugin.settings.mode = target.value as "query" | "create";
+			await this.plugin.saveSettings();
+
+			// Update UI based on mode
+			const queryInput = inputContainer.querySelector("textarea");
+			if (queryInput) {
+				queryInput.placeholder =
+					this.plugin.settings.mode === "query"
+						? "What would you like to ask?"
+						: "What topic would you like to create a note about?";
+			}
+
+			const askButton = buttonContainer.querySelector("button.mod-cta");
+			if (askButton) {
+				askButton.textContent =
+					this.plugin.settings.mode === "query" ? "Ask" : "Create";
+			}
+		});
+
 		// Current file only toggle
 		const currentFileToggle = optionsContainer.createDiv({
 			cls: "vault-llm-option-toggle",
@@ -676,6 +876,33 @@ class VaultLLMAssistantView extends View {
 		currentFileCheckbox.addEventListener("change", async (e) => {
 			this.plugin.settings.includeCurrentFileOnly =
 				currentFileCheckbox.checked;
+			await this.plugin.saveSettings();
+		});
+
+		// Use vault content toggle
+		const useVaultContentToggle = optionsContainer.createDiv({
+			cls: "vault-llm-option-toggle",
+		});
+
+		const useVaultContentCheckbox = useVaultContentToggle.createEl(
+			"input",
+			{
+				attr: {
+					type: "checkbox",
+					id: "use-vault-content",
+				},
+			}
+		);
+		useVaultContentCheckbox.checked = this.plugin.settings.useVaultContent;
+
+		useVaultContentToggle.createEl("label", {
+			text: "Use vault content",
+			attr: { for: "use-vault-content" },
+		});
+
+		useVaultContentCheckbox.addEventListener("change", async (e) => {
+			this.plugin.settings.useVaultContent =
+				useVaultContentCheckbox.checked;
 			await this.plugin.saveSettings();
 		});
 
@@ -742,83 +969,105 @@ class VaultLLMAssistantView extends View {
 		const loadingEl = responseContainer.createDiv({
 			cls: "vault-llm-loading",
 		});
-		loadingEl.setText("Scanning vault and generating response...");
+		loadingEl.setText(
+			this.plugin.settings.mode === "query"
+				? "Scanning vault and generating response..."
+				: "Generating note content..."
+		);
 
 		try {
-			// Scan the vault
-			const vaultContent = await this.plugin.scanVault(
-				"",
-				currentFile || null
-			);
+			// Scan the vault only if useVaultContent is true
+			const vaultContent = this.plugin.settings.useVaultContent
+				? await this.plugin.scanVault("", currentFile || null)
+				: "";
 
 			// Create query display
 			const queryEl = responseContainer.createEl("div", {
 				cls: "vault-llm-query",
 			});
-			queryEl.innerHTML = "<strong>Your question:</strong> " + query;
 
-			// Create container for workspace sources
-			const sourceFiles = this.extractSourceFiles(vaultContent);
-			const workspaceSourcesContainer = responseContainer.createDiv({
-				cls: "vault-llm-workspace-sources",
-			});
-
-			// Create collapsible header
-			const sourcesHeader = workspaceSourcesContainer.createDiv({
-				cls: "vault-llm-sources-header",
-			});
-			sourcesHeader.innerHTML = `<div class="vault-llm-sources-title">
-					<span class="vault-llm-sources-icon">▼</span> 
-					Workspace sources (${sourceFiles.length} files)
-				</div>`;
-
-			// Create collapsible content
-			const sourcesContent = workspaceSourcesContainer.createDiv({
-				cls: "vault-llm-sources-content",
-			});
-
-			// Add files as simple text blocks instead of a list
-			if (sourceFiles.length > 0) {
-				sourceFiles.forEach((file) => {
-					sourcesContent.createEl("div", {
-						text: file,
-						cls: "vault-llm-source-item",
-					});
-				});
+			if (this.plugin.settings.mode === "query") {
+				queryEl.innerHTML = "<strong>Your question:</strong> " + query;
 			} else {
-				sourcesContent.createEl("div", {
-					text: "No source files were included.",
-					cls: "vault-llm-empty-list",
-				});
+				queryEl.innerHTML = "<strong>Note topic:</strong> " + query;
 			}
 
-			// Add toggle behavior
-			sourcesHeader.addEventListener("click", () => {
-				sourcesContent.toggleClass(
-					"vault-llm-sources-collapsed",
-					!sourcesContent.hasClass("vault-llm-sources-collapsed")
-				);
+			// If using vault content, show the sources
+			if (
+				this.plugin.settings.useVaultContent &&
+				vaultContent.trim() !== ""
+			) {
+				// Create container for workspace sources
+				const sourceFiles = this.extractSourceFiles(vaultContent);
+				const workspaceSourcesContainer = responseContainer.createDiv({
+					cls: "vault-llm-workspace-sources",
+				});
+
+				// Create collapsible header
+				const sourcesHeader = workspaceSourcesContainer.createDiv({
+					cls: "vault-llm-sources-header",
+				});
+				sourcesHeader.innerHTML = `<div class="vault-llm-sources-title">
+						<span class="vault-llm-sources-icon">▼</span> 
+						Workspace sources (${sourceFiles.length} files)
+					</div>`;
+
+				// Create collapsible content
+				const sourcesContent = workspaceSourcesContainer.createDiv({
+					cls: "vault-llm-sources-content",
+				});
+
+				// Add files as simple text blocks instead of a list
+				if (sourceFiles.length > 0) {
+					sourceFiles.forEach((file) => {
+						sourcesContent.createEl("div", {
+							text: file,
+							cls: "vault-llm-source-item",
+						});
+					});
+				} else {
+					sourcesContent.createEl("div", {
+						text: "No source files were included.",
+						cls: "vault-llm-empty-list",
+					});
+				}
+
+				// Add toggle behavior
+				sourcesHeader.addEventListener("click", () => {
+					sourcesContent.toggleClass(
+						"vault-llm-sources-collapsed",
+						!sourcesContent.hasClass("vault-llm-sources-collapsed")
+					);
+					const icon = sourcesHeader.querySelector(
+						".vault-llm-sources-icon"
+					);
+					if (icon) {
+						icon.textContent = sourcesContent.hasClass(
+							"vault-llm-sources-collapsed"
+						)
+							? "▶"
+							: "▼";
+					}
+				});
+
+				// Start collapsed by default
+				sourcesContent.addClass("vault-llm-sources-collapsed");
 				const icon = sourcesHeader.querySelector(
 					".vault-llm-sources-icon"
 				);
 				if (icon) {
-					icon.textContent = sourcesContent.hasClass(
-						"vault-llm-sources-collapsed"
-					)
-						? "▶"
-						: "▼";
+					icon.textContent = "▶";
 				}
-			});
-
-			// Start collapsed by default
-			sourcesContent.addClass("vault-llm-sources-collapsed");
-			const icon = sourcesHeader.querySelector(".vault-llm-sources-icon");
-			if (icon) {
-				icon.textContent = "▶";
+			} else if (!this.plugin.settings.useVaultContent) {
+				// Add a message that vault content is not being used
+				responseContainer.createEl("div", {
+					cls: "vault-llm-info-message",
+					text: "Note: Vault content is not being used for this query.",
+				});
 			}
 
 			// Fetch the response
-			const response = await this.plugin.queryLLM(
+			let response = await this.plugin.queryLLM(
 				query,
 				vaultContent,
 				currentFile ? currentFile.path : null
@@ -921,11 +1170,18 @@ class VaultLLMAssistantView extends View {
 								: query.trim();
 					}
 
-					// Format the content with query info at top, followed by the response
-					const formattedContent =
-						`# ${noteTitle}\n\n` +
-						`> [!info] Query\n> ${query}\n\n` +
-						response;
+					// Format the content based on the mode
+					let formattedContent = "";
+
+					if (this.plugin.settings.mode === "query") {
+						formattedContent =
+							`# ${noteTitle}\n\n` +
+							`> [!info] Query\n> ${query}\n\n` +
+							response;
+					} else {
+						// For create mode, just use the content with a title
+						formattedContent = `# ${noteTitle}\n\n${response}`;
+					}
 
 					// Create the note
 					const file = await this.plugin.createNoteFromContent(
@@ -1368,6 +1624,37 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		// Use vault content in prompts
+		new Setting(containerEl)
+			.setName("Use Vault Content in Prompts")
+			.setDesc("When enabled, includes the vault content in prompts")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useVaultContent)
+					.onChange(async (value) => {
+						this.plugin.settings.useVaultContent = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// Mode selection
+		new Setting(containerEl)
+			.setName("Mode")
+			.setDesc("Select the current mode: query or create notes")
+			.addDropdown((dropdown) => {
+				const dropdownEl = dropdown
+					.addOption("query", "Query")
+					.addOption("create", "Create Notes")
+					.setValue(this.plugin.settings.mode)
+					.onChange(async (value) => {
+						this.plugin.settings.mode = value as "query" | "create";
+						await this.plugin.saveSettings();
+					});
+				// Make dropdown wider
+				dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
+				return dropdown;
+			});
 
 		// Create folder management section
 		const folderSection = containerEl.createDiv({

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-vault-llm-assistant",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "An Obsidian plugin that uses LLM to answer questions about your vault",
 	"main": "main.js",
 	"scripts": {
@@ -26,9 +26,5 @@
 		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "^4.5.5"
-	},
-	"dependencies": {
-		"@google/generative-ai": "^0.24.0",
-		"openai": "^4.95.1"
 	}
 }
