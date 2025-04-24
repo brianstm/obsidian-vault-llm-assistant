@@ -4,6 +4,8 @@
 Query your Obsidian vault using AI, get contextual answers with proper citations, and create new notes on specific topics.
 </div>
 
+<br />
+
 <div align="center">
   <a href="https://github.com/brianstm/obsidian-vault-llm-assistant/releases">
     <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />
@@ -25,9 +27,10 @@ Query your Obsidian vault using AI, get contextual answers with proper citations
 
 ## Screenshots
 
-![Ask interface - first view](images/ask_1.png)
-![Ask interface - second view](images/ask_2.png)
+![Query interface](images/ask_1.png)
 ![Generated notes view](images/generated_notes.png)
+
+![Create interface](images/create_1.png)
 
 ## Installation
 

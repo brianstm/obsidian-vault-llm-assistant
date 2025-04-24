@@ -1479,7 +1479,7 @@ class VaultLLMAssistantView extends View {
 			// Fix common malformed link patterns
 			let updatedContent = content;
 
-			// Fix [[path]] format
+			// Fix [[path]] format - show the full path in the link text
 			updatedContent = updatedContent.replace(
 				/\[\[([^\]]+)\]\]/g,
 				(match, path) => {
@@ -1487,7 +1487,7 @@ class VaultLLMAssistantView extends View {
 				}
 			);
 
-			// Fix links separated by commas
+			// Fix links separated by commas - preserve the text
 			updatedContent = updatedContent.replace(
 				/\[([^\]]+)\](?:,\s*|\s*,\s*)/g,
 				(match, path) => {
@@ -1559,6 +1559,11 @@ class VaultLLMAssistantView extends View {
 					// Ensure the link is properly styled and has the correct href
 					link.classList.add("vault-llm-link");
 					link.setAttribute("href", fullPath);
+
+					// Make sure the link text is visible and matches the path
+					if (!link.textContent || link.textContent === "-") {
+						link.textContent = filePath;
+					}
 				}
 			});
 	}

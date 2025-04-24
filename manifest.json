@@ -1,8 +1,8 @@
 {
 	"id": "vault-llm-assistant",
 	"name": "Vault LLM Assistant",
-	"version": "1.0.2",
-	"minAppVersion": "0.15.2",
+	"version": "1.0.3",
+	"minAppVersion": "0.15.3",
 	"description": "A plugin that uses LLM (OpenAI or Gemini) to answer questions and create new notes about your vault",
 	"author": "Brians Tjipto",
 	"authorUrl": "https://github.com/brianstm",
