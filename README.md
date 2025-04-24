@@ -16,7 +16,9 @@ Query your Obsidian vault using AI and get contextual answers with proper citati
 
 ## Screenshots
 
-[Add screenshots here]
+![Ask interface - first view](images/ask_1.png)
+![Ask interface - second view](images/ask_2.png)
+![Generated notes view](images/generated_notes.png)
 
 ## Installation
 
