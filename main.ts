@@ -27,43 +27,47 @@ import { MarkdownRenderer } from "obsidian";
  * Defines all configurable options for the plugin
  */
 interface VaultLLMAssistantSettings {
-	apiKey: string; // API key for the selected LLM provider
-	apiEndpoint: string; // API endpoint URL
-	modelProvider: string; // 'gpt' or 'gemini'
-	model: string; // Selected model name
-	maxTokens: number; // Maximum token length for responses
-	temperature: number; // Controls randomness in generation (0-2)
-	includeCurrentFileOnly: boolean; // When true, only scans current file
-	includeFolder: string; // Optional folder path to limit scanning to
-	excludeFolder: string[]; // Folders to exclude from scanning
-	newNoteFolder: string; // Default folder path for creating new notes from responses
-	generateTitlesWithLLM: boolean; // Whether to use LLM to generate note titles
-	useVaultContent: boolean; // Whether to include vault content in prompts
-	mode: "query" | "create"; // Current mode: query or create notes
+	encryptedOpenAIApiKey: string;
+	encryptedGeminiApiKey: string;
+	apiEndpoint: string;
+	modelProvider: string;
+	model: string;
+	maxTokens: number;
+	temperature: number;
+	includeCurrentFileOnly: boolean;
+	includeFolder: string;
+	excludeFolder: string[];
+	newNoteFolder: string;
+	generateTitlesWithLLM: boolean;
+	useVaultContent: boolean;
+	mode: "query" | "create";
 }
 
 /**
  * Default settings configuration
  */
 const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
-	apiKey: "",
+	encryptedOpenAIApiKey: "",
+	encryptedGeminiApiKey: "",
 	apiEndpoint: "https://api.openai.com/v1/chat/completions",
 	modelProvider: "gpt",
-	model: "gpt-4o-mini", // Default to a modern model
+	model: "gpt-4o-mini",
 	maxTokens: 2000,
 	temperature: 0.7,
 	includeCurrentFileOnly: false,
 	includeFolder: "",
 	excludeFolder: [],
-	newNoteFolder: "", // Default to root of vault
-	generateTitlesWithLLM: true, // Default to using LLM for titles
-	useVaultContent: true, // Default to using vault content
-	mode: "query", // Default to query mode
+	newNoteFolder: "",
+	generateTitlesWithLLM: true,
+	useVaultContent: true,
+	mode: "query",
 };
 
 export default class VaultLLMAssistant extends Plugin {
 	settings: VaultLLMAssistantSettings;
 	statusBarItem: HTMLElement;
+	openAIApiKey: string = "";
+	geminiApiKey: string = "";
 
 	async onload() {
 		await this.loadSettings();
@@ -109,7 +113,7 @@ export default class VaultLLMAssistant extends Plugin {
 	 * Cleanup when plugin is disabled
 	 */
 	onunload() {
-		this.app.workspace.detachLeavesOfType("vault-llm-assistant-view");
+		// Obsidian will handle leaf cleanup
 	}
 
 	/**
@@ -121,6 +125,61 @@ export default class VaultLLMAssistant extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData()
 		);
+
+		// Load encrypted API keys
+		if (this.settings.encryptedOpenAIApiKey) {
+			this.openAIApiKey = this.decryptApiKey(
+				this.settings.encryptedOpenAIApiKey
+			);
+		}
+		
+		if (this.settings.encryptedGeminiApiKey) {
+			this.geminiApiKey = this.decryptApiKey(
+				this.settings.encryptedGeminiApiKey
+			);
+		}
+
+		// Handle legacy API key format
+		if (
+			this.settings.hasOwnProperty("encryptedApiKey") &&
+			(this.settings as any).encryptedApiKey
+		) {
+			const oldKey = this.decryptApiKey(
+				(this.settings as any).encryptedApiKey
+			);
+			if (oldKey) {
+				if (this.settings.modelProvider === "gpt") {
+					this.openAIApiKey = oldKey;
+					this.settings.encryptedOpenAIApiKey =
+						this.encryptApiKey(oldKey);
+				} else if (this.settings.modelProvider === "gemini") {
+					this.geminiApiKey = oldKey;
+					this.settings.encryptedGeminiApiKey =
+						this.encryptApiKey(oldKey);
+				}
+				
+				delete (this.settings as any).encryptedApiKey;
+				await this.saveSettings();
+			}
+		}
+		
+		// Remove any plaintext API key that might still be in the settings
+		if ((this.settings as any).apiKey) {
+			// Migrate plaintext key to encrypted format
+			if (!this.openAIApiKey && !this.geminiApiKey) {
+				const apiKey = (this.settings as any).apiKey;
+				if (this.settings.modelProvider === "gpt") {
+					this.openAIApiKey = apiKey;
+					this.settings.encryptedOpenAIApiKey = this.encryptApiKey(apiKey);
+				} else if (this.settings.modelProvider === "gemini") {
+					this.geminiApiKey = apiKey;
+					this.settings.encryptedGeminiApiKey = this.encryptApiKey(apiKey);
+				}
+			}
+			
+			delete (this.settings as any).apiKey;
+			await this.saveSettings();
+		}
 	}
 
 	/**
@@ -134,18 +193,15 @@ export default class VaultLLMAssistant extends Plugin {
 	 * Opens the assistant view in the right sidebar
 	 */
 	async activateView() {
-		this.app.workspace.detachLeavesOfType("vault-llm-assistant-view");
-
-		await this.app.workspace.getRightLeaf(false)?.setViewState({
-			type: "vault-llm-assistant-view",
-			active: true,
-		});
-
-		const leaves = this.app.workspace.getLeavesOfType(
-			"vault-llm-assistant-view"
-		);
-		if (leaves.length > 0) {
-			this.app.workspace.revealLeaf(leaves[0]);
+		// Following Obsidian guidelines to not detach leaves
+		const leaf = this.app.workspace.getRightLeaf(false);
+		
+		if (leaf) {
+			await leaf.setViewState({
+				type: "vault-llm-assistant-view",
+				active: true,
+			});
+			this.app.workspace.revealLeaf(leaf);
 		}
 	}
 
@@ -160,7 +216,6 @@ export default class VaultLLMAssistant extends Plugin {
 		additionalContext: string = "",
 		currentFile: TFile | null = null
 	): Promise<string> {
-		// If vault content is disabled, return empty string
 		if (!this.settings.useVaultContent) {
 			return additionalContext ? additionalContext : "";
 		}
@@ -168,14 +223,11 @@ export default class VaultLLMAssistant extends Plugin {
 		const vault = this.app.vault;
 		const files: TFile[] = [];
 
-		// Determine which files to scan based on settings
 		if (this.settings.includeCurrentFileOnly && currentFile) {
 			files.push(currentFile);
 		} else {
-			// Get all markdown files
 			const allFiles = vault.getMarkdownFiles();
 
-			// Filter based on include folder
 			let filesToScan = allFiles;
 			if (this.settings.includeFolder) {
 				filesToScan = allFiles.filter((file) =>
@@ -183,7 +235,6 @@ export default class VaultLLMAssistant extends Plugin {
 				);
 			}
 
-			// Filter based on exclude folders
 			if (this.settings.excludeFolder.length > 0) {
 				filesToScan = filesToScan.filter((file) => {
 					return !this.settings.excludeFolder.some((folder) =>
@@ -195,7 +246,6 @@ export default class VaultLLMAssistant extends Plugin {
 			files.push(...filesToScan);
 		}
 
-		// Read the contents of each file
 		let allContents = "";
 		for (const file of files) {
 			try {
@@ -206,7 +256,6 @@ export default class VaultLLMAssistant extends Plugin {
 			}
 		}
 
-		// Add additional context if provided
 		if (additionalContext) {
 			allContents = additionalContext + "\n\n" + allContents;
 		}
@@ -231,10 +280,8 @@ export default class VaultLLMAssistant extends Plugin {
 		try {
 			let prompt = "";
 
-			// Build different prompts based on mode and whether to use vault content
 			if (this.settings.mode === "query") {
 				if (this.settings.useVaultContent) {
-					// Query mode with vault context
 					prompt = `You are a helpful assistant for the user's Obsidian vault. 
 You have access to the user's notes which are provided below. 
 Please answer the user's question based on the information in these notes.
@@ -295,7 +342,6 @@ Topic to create a note about: ${query}`;
 				throw new Error("Unknown model provider");
 			}
 
-			// Strip markdown fences if they exist in create mode
 			if (this.settings.mode === "create") {
 				response = this.cleanMarkdownResponse(response);
 			}
@@ -320,7 +366,7 @@ Topic to create a note about: ${query}`;
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					Authorization: `Bearer ${this.settings.apiKey}`,
+					Authorization: `Bearer ${this.getApiKey()}`,
 				},
 				body: JSON.stringify({
 					model: this.settings.model,
@@ -348,7 +394,6 @@ Topic to create a note about: ${query}`;
 		} catch (error) {
 			console.error("Error querying OpenAI:", error);
 
-			// Format error message in a more user-friendly way with specific handling for common HTTP status codes
 			let errorMessage = "Error querying OpenAI: ";
 
 			if (error.status) {
@@ -382,7 +427,6 @@ Topic to create a note about: ${query}`;
 						}`;
 				}
 			} else if (error.message) {
-				// For network errors or other exceptions
 				errorMessage += error.message;
 			} else {
 				errorMessage += "Unknown error occurred";
@@ -401,7 +445,9 @@ Topic to create a note about: ${query}`;
 	async queryGemini(prompt: string): Promise<string> {
 		try {
 			const response = await requestUrl({
-				url: `https://generativelanguage.googleapis.com/v1beta/models/${this.settings.model}:generateContent?key=${this.settings.apiKey}`,
+				url: `https://generativelanguage.googleapis.com/v1beta/models/${
+					this.settings.model
+				}:generateContent?key=${this.getApiKey()}`,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -424,7 +470,6 @@ Topic to create a note about: ${query}`;
 				return jsonResponse.candidates[0].content.parts[0].text;
 			}
 
-			// Check for errors in the response
 			if (jsonResponse.error) {
 				return `Gemini API Error: ${
 					jsonResponse.error.message || "Unknown error"
@@ -435,7 +480,6 @@ Topic to create a note about: ${query}`;
 		} catch (error) {
 			console.error("Error querying Gemini:", error);
 
-			// Format error message in a more user-friendly way
 			let errorMessage = "Error querying Gemini: ";
 
 			if (error.status) {
@@ -473,7 +517,6 @@ Topic to create a note about: ${query}`;
 						}`;
 				}
 			} else if (error.message) {
-				// For network errors or other exceptions
 				errorMessage += error.message;
 			} else {
 				errorMessage += "Unknown error occurred";
@@ -484,7 +527,6 @@ Topic to create a note about: ${query}`;
 	}
 
 	formatGPTResponse(response: RequestUrlResponse): string {
-		// This is no longer needed but kept for compatibility
 		try {
 			const jsonResponse = response.json;
 			if (jsonResponse.choices && jsonResponse.choices.length > 0) {
@@ -498,7 +540,6 @@ Topic to create a note about: ${query}`;
 	}
 
 	formatGeminiResponse(response: RequestUrlResponse): string {
-		// This is no longer needed but kept for compatibility
 		try {
 			const jsonResponse = response.json;
 			if (
@@ -529,16 +570,12 @@ Topic to create a note about: ${query}`;
 		content: string
 	): Promise<TFile | null> {
 		try {
-			// Clean title for filename
-			const cleanTitle = title
-				.replace(/[\\/:*?"<>|]/g, "") // Remove invalid file characters
-				.trim();
+			const cleanTitle = title.replace(/[\\/:*?"<>|]/g, "").trim();
 
 			const fileName =
 				cleanTitle ||
 				`LLM Response ${new Date().toISOString().slice(0, 10)}`;
 
-			// Setup folder path
 			let folderPath = this.settings.newNoteFolder.trim();
 			if (folderPath && !folderPath.endsWith("/")) {
 				folderPath += "/";
@@ -546,7 +583,6 @@ Topic to create a note about: ${query}`;
 
 			const fullPath = `${folderPath}${fileName}.md`;
 
-			// Create folder if needed
 			if (folderPath) {
 				const folderExists = await this.app.vault.adapter.exists(
 					folderPath
@@ -556,7 +592,6 @@ Topic to create a note about: ${query}`;
 				}
 			}
 
-			// Create and open file
 			const file = await this.app.vault.create(fullPath, content);
 			this.app.workspace.openLinkText(file.path, "", false);
 
@@ -614,23 +649,133 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	/**
 	 * Helper function to clean up markdown responses from LLMs
 	 * Removes markdown fences and explanatory text that sometimes appears in responses
+	 *
+	 * @param text - The text to clean
+	 * @returns The cleaned text
 	 */
 	cleanMarkdownResponse(text: string): string {
-		// Remove ```md or ```markdown at the beginning
 		text = text.replace(/^```m(?:d|arkdown)\s*\n/i, "");
-
-		// Remove ``` at the end
 		text = text.replace(/\n```\s*$/i, "");
 
-		// Remove any explanatory text before the actual markdown content
 		const mdFenceMatch = text.match(/```m(?:d|arkdown)/i);
 		if (mdFenceMatch && mdFenceMatch.index) {
 			text = text.substring(mdFenceMatch.index);
-			// Then remove the fence itself
 			text = text.replace(/```m(?:d|arkdown)\s*\n/i, "");
 		}
 
 		return text;
+	}
+
+	/**
+	 * Encrypts the API key before storing in settings
+	 * Uses a simple but better-than-plaintext approach
+	 *
+	 * @param apiKey - The API key to encrypt
+	 * @returns The encrypted API key
+	 */
+	encryptApiKey(apiKey: string): string {
+		if (!apiKey) return "";
+
+		// Simple encryption using Base64 and character substitution
+		const deviceId = this.getDeviceId();
+		const mixed = apiKey
+			.split("")
+			.map((char, index) => {
+				const deviceChar =
+					deviceId[index % deviceId.length].charCodeAt(0);
+				return String.fromCharCode(char.charCodeAt(0) ^ deviceChar);
+			})
+			.join("");
+
+		return btoa(mixed);
+	}
+
+	/**
+	 * Decrypts the API key from settings
+	 *
+	 * @param encryptedKey - The encrypted API key
+	 * @returns The decrypted API key
+	 */
+	decryptApiKey(encryptedKey: string): string {
+		if (!encryptedKey) return "";
+
+		try {
+			const deviceId = this.getDeviceId();
+			const decoded = atob(encryptedKey);
+
+			return decoded
+				.split("")
+				.map((char, index) => {
+					const deviceChar =
+						deviceId[index % deviceId.length].charCodeAt(0);
+					return String.fromCharCode(char.charCodeAt(0) ^ deviceChar);
+				})
+				.join("");
+		} catch (e) {
+			console.error("Failed to decrypt API key:", e);
+			return "";
+		}
+	}
+
+	/**
+	 * Gets a device-specific ID to use for encryption
+	 * This helps make the encryption tied to the device
+	 */
+	getDeviceId(): string {
+		// Using user agent and vault path to create a unique device identifier
+		const userAgentInfo = navigator.userAgent || "unknown";
+		const vaultPath = this.app.vault.getName() || "obsidian";
+		const seed = `${userAgentInfo}-${vaultPath}`;
+
+		// Create a simple hash of the seed
+		let hash = 0;
+		for (let i = 0; i < seed.length; i++) {
+			const char = seed.charCodeAt(i);
+			hash = (hash << 5) - hash + char;
+			hash = hash & hash; // Convert to 32bit integer
+		}
+
+		return Math.abs(hash).toString(16).padStart(16, "0");
+	}
+
+	/**
+	 * Gets the API key for the current provider
+	 */
+	getApiKey(): string {
+		if (this.settings.modelProvider === "gpt") {
+			return this.openAIApiKey;
+		} else if (this.settings.modelProvider === "gemini") {
+			return this.geminiApiKey;
+		}
+		return "";
+	}
+
+	/**
+	 * Sets the API key for a specific provider
+	 */
+	async setApiKey(apiKey: string, provider: string) {
+		if (provider === "gpt") {
+			this.openAIApiKey = apiKey;
+			this.settings.encryptedOpenAIApiKey = this.encryptApiKey(apiKey);
+		} else if (provider === "gemini") {
+			this.geminiApiKey = apiKey;
+			this.settings.encryptedGeminiApiKey = this.encryptApiKey(apiKey);
+		}
+		await this.saveSettings();
+	}
+
+	/**
+	 * Gets the OpenAI API key
+	 */
+	getOpenAIApiKey(): string {
+		return this.openAIApiKey;
+	}
+
+	/**
+	 * Gets the Gemini API key
+	 */
+	getGeminiApiKey(): string {
+		return this.geminiApiKey;
 	}
 }
 
@@ -668,7 +813,6 @@ class QueryModal extends Modal {
 				: "Enter a topic to create a note about";
 		contentEl.createEl("h2", { text: title });
 
-		// Create query input
 		this.inputEl = contentEl.createEl("textarea", {
 			attr: {
 				placeholder:
@@ -678,15 +822,11 @@ class QueryModal extends Modal {
 				rows: "4",
 			},
 		});
-		this.inputEl.style.width = "100%";
 		this.inputEl.focus();
 
-		// Create button container
 		const buttonContainer = contentEl.createDiv();
 		buttonContainer.addClass("vault-llm-button-container");
-		buttonContainer.style.marginTop = "10px";
 
-		// Create cancel button
 		const cancelButton = buttonContainer.createEl("button", {
 			text: "Cancel",
 		});
@@ -694,11 +834,9 @@ class QueryModal extends Modal {
 			this.close();
 		});
 
-		// Create submit button
 		const submitButton = buttonContainer.createEl("button", {
 			text: this.plugin.settings.mode === "query" ? "Ask" : "Create",
 		});
-		submitButton.style.marginLeft = "10px";
 		submitButton.classList.add("mod-cta");
 		submitButton.addEventListener("click", () => {
 			this.query = this.inputEl.value;
@@ -706,7 +844,6 @@ class QueryModal extends Modal {
 			this.processQuery();
 		});
 
-		// Handle Enter key (with Shift+Enter for new lines)
 		this.inputEl.addEventListener("keydown", (event) => {
 			if (
 				event.key === "Enter" &&
@@ -744,13 +881,9 @@ class QueryModal extends Modal {
 
 		new Notice(noticeText);
 
-		// For query mode, show the assistant view
-		// For create mode, generate content and create a note directly
 		if (this.plugin.settings.mode === "query") {
-			// Show the assistant view
 			await this.plugin.activateView();
 
-			// Get access to the view
 			const leaves = this.app.workspace.getLeavesOfType(
 				"vault-llm-assistant-view"
 			);
@@ -764,34 +897,27 @@ class QueryModal extends Modal {
 				view.setQuery(this.query, this.currentFile);
 			}
 		} else {
-			// Create note mode - generate content and create a note directly without the UI
 			try {
-				// Skip vault scanning if useVaultContent is false
 				const vaultContent = this.plugin.settings.useVaultContent
 					? await this.plugin.scanVault("", this.currentFile || null)
 					: "";
 
-				// Show an info message if vault content is not being used
 				if (!this.plugin.settings.useVaultContent) {
 					new Notice("Creating note without using vault content");
 				}
 
-				// Generate content
 				const content = await this.plugin.queryLLM(
 					this.query,
 					vaultContent,
 					this.currentFile ? this.currentFile.path : null
 				);
 
-				// Check if the content is an error message
 				if (
 					content.startsWith("Error querying ") ||
 					content.startsWith("Gemini API Error:")
 				) {
-					// Format error message nicely
 					let errorMessage = "Failed to create note: ";
 
-					// Extract the main error details
 					if (content.includes(":")) {
 						const [_, errorDetails] = content.split(":", 2);
 						errorMessage += errorDetails.trim();
@@ -799,12 +925,10 @@ class QueryModal extends Modal {
 						errorMessage += content;
 					}
 
-					// Show as a notice and return early
-					new Notice(errorMessage, 10000); // Show for 10 seconds
+					new Notice(errorMessage, 10000);
 					return;
 				}
 
-				// Generate title
 				let title = this.query;
 				if (this.plugin.settings.generateTitlesWithLLM) {
 					try {
@@ -817,11 +941,9 @@ class QueryModal extends Modal {
 						new Notice(
 							"Could not generate a title, using your topic text instead."
 						);
-						// Continue with the query as the title
 					}
 				}
 
-				// Create note
 				const noteContent = `# ${title}\n\n${content}`;
 				const file = await this.plugin.createNoteFromContent(
 					title,
@@ -834,11 +956,9 @@ class QueryModal extends Modal {
 			} catch (error) {
 				console.error("Error creating note:", error);
 
-				// Create a more user-friendly error message
 				let errorMessage = "Error creating note: ";
 
 				if (error.message) {
-					// Check for common error patterns
 					if (error.message.includes("already exists")) {
 						errorMessage +=
 							"A note with this title already exists.";
@@ -852,7 +972,7 @@ class QueryModal extends Modal {
 					errorMessage += "An unknown error occurred.";
 				}
 
-				new Notice(errorMessage, 7000); // Show for 7 seconds
+				new Notice(errorMessage, 7000);
 			}
 		}
 	}
@@ -912,13 +1032,11 @@ class VaultLLMAssistantView extends View {
 		containerEl.addClass("vault-llm-assistant-view");
 		containerEl.createEl("h2", { text: "Vault LLM Assistant" });
 
-		// Create the initial interface
 		const introText = containerEl.createEl("p", {
 			text: "Ask a question about your vault.",
 			cls: "vault-llm-intro-text",
 		});
 
-		// Create query input and button
 		const inputContainer = containerEl.createDiv({
 			cls: "vault-llm-input-container",
 		});
@@ -930,12 +1048,10 @@ class VaultLLMAssistantView extends View {
 			},
 		});
 
-		// Options container (with scope toggles)
 		const optionsContainer = inputContainer.createDiv({
 			cls: "vault-llm-options-container",
 		});
 
-		// Mode toggle
 		const modeToggle = optionsContainer.createDiv({
 			cls: "vault-llm-option-toggle",
 		});
@@ -969,7 +1085,6 @@ class VaultLLMAssistantView extends View {
 			this.plugin.settings.mode = target.value as "query" | "create";
 			await this.plugin.saveSettings();
 
-			// Update UI based on mode
 			const queryInput = inputContainer.querySelector("textarea");
 			if (queryInput) {
 				queryInput.placeholder =
@@ -985,7 +1100,6 @@ class VaultLLMAssistantView extends View {
 			}
 		});
 
-		// Current file only toggle
 		const currentFileToggle = optionsContainer.createDiv({
 			cls: "vault-llm-option-toggle",
 		});
@@ -1010,7 +1124,6 @@ class VaultLLMAssistantView extends View {
 			await this.plugin.saveSettings();
 		});
 
-		// Use vault content toggle
 		const useVaultContentToggle = optionsContainer.createDiv({
 			cls: "vault-llm-option-toggle",
 		});
@@ -1044,7 +1157,6 @@ class VaultLLMAssistantView extends View {
 		const askButton = buttonContainer.createEl("button", { text: "Ask" });
 		askButton.classList.add("mod-cta");
 
-		// Function to process the query
 		const processQuery = () => {
 			const query = queryInput.value.trim();
 			if (query) {
@@ -1055,12 +1167,9 @@ class VaultLLMAssistantView extends View {
 			}
 		};
 
-		// Add click handler
 		askButton.addEventListener("click", processQuery);
 
-		// Add keyboard shortcut (Cmd/Ctrl+Enter)
 		queryInput.addEventListener("keydown", (event) => {
-			// Check for Cmd+Enter on Mac or Ctrl+Enter on Windows/others
 			if (
 				(event.metaKey && event.key === "Enter") ||
 				(event.ctrlKey && event.key === "Enter")
@@ -1070,7 +1179,6 @@ class VaultLLMAssistantView extends View {
 			}
 		});
 
-		// Create container for response
 		containerEl.createDiv({ cls: "vault-llm-response-container" });
 	}
 
@@ -1090,14 +1198,12 @@ class VaultLLMAssistantView extends View {
 		this.isProcessing = true;
 		this.currentFile = currentFile;
 
-		// Update the response container
 		const responseContainer = this.containerEl.querySelector(
 			".vault-llm-response-container"
 		);
 		if (!responseContainer) return;
 		responseContainer.empty();
 
-		// Show that we're processing
 		const loadingEl = responseContainer.createDiv({
 			cls: "vault-llm-loading",
 		});
@@ -1108,48 +1214,54 @@ class VaultLLMAssistantView extends View {
 		);
 
 		try {
-			// Scan the vault only if useVaultContent is true
 			const vaultContent = this.plugin.settings.useVaultContent
 				? await this.plugin.scanVault("", currentFile || null)
 				: "";
 
-			// Create query display
 			const queryEl = responseContainer.createEl("div", {
 				cls: "vault-llm-query",
 			});
 
 			if (this.plugin.settings.mode === "query") {
-				queryEl.innerHTML = "<strong>Your question:</strong> " + query;
+				const strongEl = queryEl.createEl("strong");
+				strongEl.setText("Your question: ");
+				queryEl.createSpan({ text: query });
 			} else {
-				queryEl.innerHTML = "<strong>Note topic:</strong> " + query;
+				const strongEl = queryEl.createEl("strong");
+				strongEl.setText("Note topic: ");
+				queryEl.createSpan({ text: query });
 			}
 
-			// If using vault content, show the sources
 			if (
 				this.plugin.settings.useVaultContent &&
 				vaultContent.trim() !== ""
 			) {
-				// Create container for workspace sources
 				const sourceFiles = this.extractSourceFiles(vaultContent);
 				const workspaceSourcesContainer = responseContainer.createDiv({
 					cls: "vault-llm-workspace-sources",
 				});
 
-				// Create collapsible header
 				const sourcesHeader = workspaceSourcesContainer.createDiv({
 					cls: "vault-llm-sources-header",
 				});
-				sourcesHeader.innerHTML = `<div class="vault-llm-sources-title">
-						<span class="vault-llm-sources-icon">▼</span> 
-						Workspace sources (${sourceFiles.length} files)
-					</div>`;
 
-				// Create collapsible content
+				const sourcesTitle = sourcesHeader.createDiv({
+					cls: "vault-llm-sources-title",
+				});
+
+				const iconSpan = sourcesTitle.createSpan({
+					cls: "vault-llm-sources-icon",
+					text: "▼",
+				});
+
+				sourcesTitle.createSpan({
+					text: ` Workspace sources (${sourceFiles.length} files)`,
+				});
+
 				const sourcesContent = workspaceSourcesContainer.createDiv({
 					cls: "vault-llm-sources-content",
 				});
 
-				// Add files as simple text blocks instead of a list
 				if (sourceFiles.length > 0) {
 					sourceFiles.forEach((file) => {
 						sourcesContent.createEl("div", {
@@ -1164,17 +1276,13 @@ class VaultLLMAssistantView extends View {
 					});
 				}
 
-				// Add toggle behavior
 				sourcesHeader.addEventListener("click", () => {
 					sourcesContent.toggleClass(
 						"vault-llm-sources-collapsed",
 						!sourcesContent.hasClass("vault-llm-sources-collapsed")
 					);
-					const icon = sourcesHeader.querySelector(
-						".vault-llm-sources-icon"
-					);
-					if (icon) {
-						icon.textContent = sourcesContent.hasClass(
+					if (iconSpan) {
+						iconSpan.textContent = sourcesContent.hasClass(
 							"vault-llm-sources-collapsed"
 						)
 							? "▶"
@@ -1182,44 +1290,33 @@ class VaultLLMAssistantView extends View {
 					}
 				});
 
-				// Start collapsed by default
 				sourcesContent.addClass("vault-llm-sources-collapsed");
-				const icon = sourcesHeader.querySelector(
-					".vault-llm-sources-icon"
-				);
-				if (icon) {
-					icon.textContent = "▶";
+				if (iconSpan) {
+					iconSpan.textContent = "▶";
 				}
 			} else if (!this.plugin.settings.useVaultContent) {
-				// Add a message that vault content is not being used
 				responseContainer.createEl("div", {
 					cls: "vault-llm-info-message",
 					text: "Note: Vault content is not being used for this query.",
 				});
 			}
 
-			// Fetch the response
 			let response = await this.plugin.queryLLM(
 				query,
 				vaultContent,
 				currentFile ? currentFile.path : null
 			);
 
-			// Replace loading with the response
 			loadingEl.remove();
 
-			// Enhanced error handling that displays user-friendly error messages with troubleshooting tips
-			// If the response starts with an error message, we display it in a nicely formatted container
 			if (
 				response.startsWith("Error querying ") ||
 				response.startsWith("Gemini API Error:")
 			) {
-				// Create a nicely formatted error message
 				const errorContainer = responseContainer.createEl("div", {
 					cls: "vault-llm-error-message",
 				});
 
-				// Split the error message for better formatting
 				if (response.includes(":")) {
 					const [errorTitle, errorDetails] = response.split(":", 2);
 
@@ -1233,7 +1330,6 @@ class VaultLLMAssistantView extends View {
 						text: errorDetails.trim(),
 					});
 
-					// Add troubleshooting tips based on error
 					if (response.includes("API key")) {
 						errorContainer.createEl("div", {
 							text: "→ Check your API key in settings and verify it's correct.",
@@ -1257,7 +1353,6 @@ class VaultLLMAssistantView extends View {
 					errorContainer.setText(response);
 				}
 
-				// Add a retry button
 				const retryButton = responseContainer.createEl("button", {
 					text: "Try Again",
 					cls: "vault-llm-action-button",
@@ -1270,12 +1365,10 @@ class VaultLLMAssistantView extends View {
 				return;
 			}
 
-			// Create container for the response with some styling
 			const answerContainer = responseContainer.createEl("div", {
 				cls: "vault-llm-answer",
 			});
 
-			// Set the inner HTML to properly render markdown
 			MarkdownRenderer.renderMarkdown(
 				response,
 				answerContainer,
@@ -1283,37 +1376,23 @@ class VaultLLMAssistantView extends View {
 				new Component()
 			);
 
-			// Make content selectable
 			answerContainer.addClass("vault-llm-selectable");
 
-			// Add action buttons container
 			const actionButtonsContainer = responseContainer.createEl("div", {
 				cls: "vault-llm-action-buttons",
 			});
 
-			// Copy Text button
 			const copyTextButton = actionButtonsContainer.createEl("button", {
 				text: "Copy Text",
 				cls: "vault-llm-action-button",
 			});
 
 			copyTextButton.addEventListener("click", () => {
-				// Use DOM manipulation to extract plain text
-				const tempDiv = document.createElement("div");
-				tempDiv.innerHTML = answerContainer.innerHTML;
-
-				// Remove all script tags for safety
-				const scripts = tempDiv.getElementsByTagName("script");
-				while (scripts[0]) {
-					scripts[0].parentNode?.removeChild(scripts[0]);
-				}
-
-				const plainText = tempDiv.innerText;
+				const plainText = answerContainer.textContent || "";
 				navigator.clipboard.writeText(plainText);
 				new Notice("Text copied to clipboard");
 			});
 
-			// Copy Markdown button
 			const copyMarkdownButton = actionButtonsContainer.createEl(
 				"button",
 				{
@@ -1327,44 +1406,36 @@ class VaultLLMAssistantView extends View {
 				new Notice("Markdown copied to clipboard");
 			});
 
-			// Create Note button
 			const createNoteButton = actionButtonsContainer.createEl("button", {
 				text: "Create Note",
 				cls: "vault-llm-action-button",
 			});
 
 			createNoteButton.addEventListener("click", async () => {
-				// Default title
 				let noteTitle = `LLM Response ${new Date()
 					.toISOString()
 					.slice(0, 10)}`;
 
-				// Only show notice and change button state if we're going to generate a title
 				if (this.plugin.settings.generateTitlesWithLLM) {
-					// Show a loading notice
 					new Notice("Generating title for note...");
 
-					// Change button state to show it's working
 					createNoteButton.disabled = true;
 					createNoteButton.setText("Generating title...");
 				}
 
 				try {
-					// Get a suitable title based on the setting
 					if (this.plugin.settings.generateTitlesWithLLM) {
 						noteTitle = await this.plugin.generateTitleForResponse(
 							query,
 							response
 						);
 					} else {
-						// Use a simple title derived from the query
 						noteTitle =
 							query.length > 50
 								? query.substring(0, 50).trim() + "..."
 								: query.trim();
 					}
 
-					// Format the content based on the mode
 					let formattedContent = "";
 
 					if (this.plugin.settings.mode === "query") {
@@ -1373,11 +1444,9 @@ class VaultLLMAssistantView extends View {
 							`> [!info] Query\n> ${query}\n\n` +
 							response;
 					} else {
-						// For create mode, just use the content with a title
 						formattedContent = `# ${noteTitle}\n\n${response}`;
 					}
 
-					// Create the note
 					const file = await this.plugin.createNoteFromContent(
 						noteTitle,
 						formattedContent
@@ -1390,7 +1459,6 @@ class VaultLLMAssistantView extends View {
 					console.error("Error creating note:", error);
 					new Notice(`Error creating note: ${error.message}`);
 				} finally {
-					// Reset button state if we changed it
 					if (this.plugin.settings.generateTitlesWithLLM) {
 						createNoteButton.disabled = false;
 						createNoteButton.setText("Create Note");
@@ -1398,13 +1466,11 @@ class VaultLLMAssistantView extends View {
 				}
 			});
 
-			// Make sure the user can see the action buttons by scrolling to the bottom
 			setTimeout(() => {
 				responseContainer.scrollTo({
 					top: responseContainer.scrollHeight,
 					behavior: "smooth",
 				});
-				// Then scroll back up slightly to show both the answer and buttons
 				setTimeout(() => {
 					responseContainer.scrollTo({
 						top: responseContainer.scrollHeight - 150,
@@ -1413,10 +1479,7 @@ class VaultLLMAssistantView extends View {
 				}, 100);
 			}, 200);
 
-			// Process any internal links to make them clickable
 			this.processLinks(answerContainer);
-
-			// Scroll to the beginning of the response
 			responseContainer.scrollTop = 0;
 		} catch (error) {
 			loadingEl.remove();
@@ -1471,55 +1534,26 @@ class VaultLLMAssistantView extends View {
 	 * @param element - HTML element containing the response
 	 */
 	processLinks(element: HTMLElement) {
-		// First clean up any malformed link patterns in the text content
-		const paragraphs = element.querySelectorAll("p");
-		paragraphs.forEach((paragraph) => {
-			const content = paragraph.innerHTML;
+		// First process paragraphs to find and convert wiki-style links
+		this.processWikiStyleLinks(element);
 
-			// Fix common malformed link patterns
-			let updatedContent = content;
-
-			// Fix [[path]] format - show the full path in the link text
-			updatedContent = updatedContent.replace(
-				/\[\[([^\]]+)\]\]/g,
-				(match, path) => {
-					return `<a class="internal-link vault-llm-link" href="${path.trim()}">${path.trim()}</a>`;
-				}
-			);
-
-			// Fix links separated by commas - preserve the text
-			updatedContent = updatedContent.replace(
-				/\[([^\]]+)\](?:,\s*|\s*,\s*)/g,
-				(match, path) => {
-					return `<a class="internal-link vault-llm-link" href="${path.trim()}">${path.trim()}</a> `;
-				}
-			);
-
-			// Update paragraph content if changes were made
-			if (updatedContent !== content) {
-				paragraph.innerHTML = updatedContent;
-			}
-		});
-
-		// Now process all links to make them clickable
+		// Process all links to make them clickable
 		element
 			.querySelectorAll("a.internal-link, .cm-underline")
 			.forEach((link: HTMLElement) => {
 				const href =
 					link.getAttribute("href") || link.textContent?.trim();
 				if (href) {
-					// Clean up the link text and properly handle fragment identifiers
+					// Handle different link formats and fragments
 					const cleanHref = href.replace(/[\[\],]/g, "").trim();
 					let filePath = cleanHref;
 					let fragment = "";
 
-					// Handle Markdown-style header references
 					if (cleanHref.includes(" > ")) {
 						// Format: "file.md > Header" - convert to proper Obsidian format
 						const parts = cleanHref.split(" > ", 2);
 						filePath = parts[0].trim();
 						if (parts.length > 1) {
-							// Create a proper fragment ID from the header
 							fragment =
 								"#" +
 								parts[1]
@@ -1528,7 +1562,6 @@ class VaultLLMAssistantView extends View {
 									.replace(/\s+/g, "-");
 						}
 					} else if (cleanHref.includes("#")) {
-						// Already has a fragment
 						const parts = cleanHref.split("#", 2);
 						filePath = parts[0].trim();
 						fragment =
@@ -1556,16 +1589,92 @@ class VaultLLMAssistantView extends View {
 						}
 					});
 
-					// Ensure the link is properly styled and has the correct href
 					link.classList.add("vault-llm-link");
 					link.setAttribute("href", fullPath);
 
 					// Make sure the link text is visible and matches the path
-					if (!link.textContent || link.textContent === "-") {
+					if (
+						!link.textContent ||
+						link.textContent === "-" ||
+						link.textContent.trim() === "" ||
+						link.textContent.trim() === "-"
+					) {
 						link.textContent = filePath;
+						link.classList.add("vault-llm-visible-link");
 					}
 				}
 			});
+	}
+
+	/**
+	 * Processes paragraphs to find and convert wiki-style links
+	 *
+	 * @param element - HTML element containing the response
+	 */
+	processWikiStyleLinks(element: HTMLElement) {
+		const paragraphs = element.querySelectorAll("p");
+		paragraphs.forEach((paragraph) => {
+			const text = paragraph.textContent || "";
+			const fragment = document.createDocumentFragment();
+			let lastIndex = 0;
+
+			// Find wiki-style links [[...]]
+			const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
+			let match;
+
+			while ((match = wikiLinkRegex.exec(text)) !== null) {
+				// Add text before the match
+				if (match.index > lastIndex) {
+					fragment.appendChild(
+						document.createTextNode(
+							text.substring(lastIndex, match.index)
+						)
+					);
+				}
+
+				const path = match[1].trim();
+
+				// Create link element
+				const linkEl = document.createElement("a");
+				linkEl.classList.add("internal-link", "vault-llm-link");
+				linkEl.setAttribute("href", path);
+				linkEl.textContent = path;
+
+				// Add event listener to open link
+				linkEl.addEventListener("click", (e) => {
+					e.preventDefault();
+					const file = this.app.metadataCache.getFirstLinkpathDest(
+						path,
+						""
+					);
+					if (file instanceof TFile) {
+						this.app.workspace.openLinkText(path, "", false);
+					} else {
+						new Notice(`File not found: ${path}`);
+					}
+				});
+
+				fragment.appendChild(linkEl);
+				lastIndex = match.index + match[0].length;
+			}
+
+			// Add remaining text
+			if (lastIndex < text.length) {
+				fragment.appendChild(
+					document.createTextNode(text.substring(lastIndex))
+				);
+			}
+
+			// Only replace content if we found wiki links
+			if (lastIndex > 0) {
+				// Clear paragraph content using proper DOM API
+				while (paragraph.firstChild) {
+					paragraph.removeChild(paragraph.firstChild);
+				}
+				
+				paragraph.appendChild(fragment);
+			}
+		});
 	}
 }
 
@@ -1575,12 +1684,12 @@ class VaultLLMAssistantView extends View {
  */
 class VaultLLMAssistantSettingTab extends PluginSettingTab {
 	plugin: VaultLLMAssistant;
-	apiKeyVisible: boolean = false;
+	openAIApiKeyVisible: boolean = false;
+	geminiApiKeyVisible: boolean = false;
 
 	constructor(app: App, plugin: VaultLLMAssistant) {
 		super(app, plugin);
 		this.plugin = plugin;
-		this.apiKeyVisible = false;
 	}
 
 	/**
@@ -1593,7 +1702,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h2", { text: "Vault LLM Assistant Settings" });
 
-		// LLM provider selection - wider dropdown
+		// LLM Provider setting
 		new Setting(containerEl)
 			.setName("LLM Provider")
 			.setDesc("Select which LLM provider to use")
@@ -1605,18 +1714,16 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.modelProvider = value;
 
-						// Update the API endpoint based on the provider
+						// Update endpoints and default model based on provider
 						if (value === "gpt") {
 							this.plugin.settings.apiEndpoint =
 								"https://api.openai.com/v1/chat/completions";
-							// Set a default model for GPT
 							if (!this.plugin.settings.model.startsWith("gpt")) {
 								this.plugin.settings.model = "gpt-4o-mini";
 							}
 						} else if (value === "gemini") {
 							this.plugin.settings.apiEndpoint =
 								"https://generativelanguage.googleapis.com/v1beta/models";
-							// Set a default model for Gemini
 							if (
 								!this.plugin.settings.model.startsWith("gemini")
 							) {
@@ -1625,54 +1732,118 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 						}
 
 						await this.plugin.saveSettings();
-						this.display(); // Redraw the settings to update model options
+						this.display(); // Redraw the settings
 					});
-				// Make dropdown wider
 				dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 				return dropdown;
 			});
 
-		// API Key with toggle visibility
-		const apiKeySetting = new Setting(containerEl)
-			.setName("API Key")
-			.setDesc("Enter your API key for the selected LLM provider");
+		// OpenAI API Key
+		const openAIApiKeySetting = new Setting(containerEl)
+			.setName("OpenAI API Key")
+			.setDesc(
+				`Enter your OpenAI API key ${
+					this.plugin.settings.modelProvider === "gpt"
+						? "(Required)"
+						: "(Optional)"
+				}`
+			);
 
-		// Create container for API key input and toggle button
-		const apiKeyContainer = createDiv({
+		// Create container for OpenAI API key input and toggle button
+		const openAIApiKeyContainer = createDiv({
 			cls: "vault-llm-apikey-container",
 		});
-		apiKeySetting.controlEl.appendChild(apiKeyContainer);
+		openAIApiKeySetting.controlEl.appendChild(openAIApiKeyContainer);
 
-		// Add text input
-		const apiKeyInput = new TextComponent(apiKeyContainer);
-		apiKeyInput
-			.setPlaceholder("Enter your API key")
+		// Add text input for OpenAI
+		const openAIApiKeyInput = new TextComponent(openAIApiKeyContainer);
+		openAIApiKeyInput
+			.setPlaceholder("Enter your OpenAI API key")
 			.setValue(
-				this.apiKeyVisible
-					? this.plugin.settings.apiKey
+				this.openAIApiKeyVisible
+					? this.plugin.getOpenAIApiKey()
 					: "••••••••••••••••••••••••••"
 			)
 			.onChange(async (value: string) => {
-				this.plugin.settings.apiKey = value;
-				await this.plugin.saveSettings();
+				await this.plugin.setApiKey(value, "gpt");
 			});
-		apiKeyInput.inputEl.type = this.apiKeyVisible ? "text" : "password";
-		apiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+		openAIApiKeyInput.inputEl.type = this.openAIApiKeyVisible
+			? "text"
+			: "password";
+		openAIApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
 
-		// Add visibility toggle button
-		const toggleButton = apiKeyContainer.createEl("button", {
+		// Add visibility toggle button for OpenAI
+		const openAIToggleButton = openAIApiKeyContainer.createEl("button", {
 			cls: "vault-llm-visibility-toggle",
-			text: this.apiKeyVisible ? "Hide" : "Show",
+			text: this.openAIApiKeyVisible ? "Hide" : "Show",
 		});
-		toggleButton.addEventListener("click", () => {
-			this.apiKeyVisible = !this.apiKeyVisible;
-			apiKeyInput.inputEl.type = this.apiKeyVisible ? "text" : "password";
-			apiKeyInput.setValue(
-				this.apiKeyVisible
-					? this.plugin.settings.apiKey
+		openAIToggleButton.addEventListener("click", () => {
+			this.openAIApiKeyVisible = !this.openAIApiKeyVisible;
+			openAIApiKeyInput.inputEl.type = this.openAIApiKeyVisible
+				? "text"
+				: "password";
+			openAIApiKeyInput.setValue(
+				this.openAIApiKeyVisible
+					? this.plugin.getOpenAIApiKey()
 					: "••••••••••••••••••••••••••"
 			);
-			toggleButton.textContent = this.apiKeyVisible ? "Hide" : "Show";
+			openAIToggleButton.textContent = this.openAIApiKeyVisible
+				? "Hide"
+				: "Show";
+		});
+
+		// Gemini API Key
+		const geminiApiKeySetting = new Setting(containerEl)
+			.setName("Gemini API Key")
+			.setDesc(
+				`Enter your Google Gemini API key ${
+					this.plugin.settings.modelProvider === "gemini"
+						? "(Required)"
+						: "(Optional)"
+				}`
+			);
+
+		// Create container for Gemini API key input and toggle button
+		const geminiApiKeyContainer = createDiv({
+			cls: "vault-llm-apikey-container",
+		});
+		geminiApiKeySetting.controlEl.appendChild(geminiApiKeyContainer);
+
+		// Add text input for Gemini
+		const geminiApiKeyInput = new TextComponent(geminiApiKeyContainer);
+		geminiApiKeyInput
+			.setPlaceholder("Enter your Gemini API key")
+			.setValue(
+				this.geminiApiKeyVisible
+					? this.plugin.getGeminiApiKey()
+					: "••••••••••••••••••••••••••"
+			)
+			.onChange(async (value: string) => {
+				await this.plugin.setApiKey(value, "gemini");
+			});
+		geminiApiKeyInput.inputEl.type = this.geminiApiKeyVisible
+			? "text"
+			: "password";
+		geminiApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+
+		// Add visibility toggle button for Gemini
+		const geminiToggleButton = geminiApiKeyContainer.createEl("button", {
+			cls: "vault-llm-visibility-toggle",
+			text: this.geminiApiKeyVisible ? "Hide" : "Show",
+		});
+		geminiToggleButton.addEventListener("click", () => {
+			this.geminiApiKeyVisible = !this.geminiApiKeyVisible;
+			geminiApiKeyInput.inputEl.type = this.geminiApiKeyVisible
+				? "text"
+				: "password";
+			geminiApiKeyInput.setValue(
+				this.geminiApiKeyVisible
+					? this.plugin.getGeminiApiKey()
+					: "••••••••••••••••••••••••••"
+			);
+			geminiToggleButton.textContent = this.geminiApiKeyVisible
+				? "Hide"
+				: "Show";
 		});
 
 		// Model selection

@@ -25,6 +25,8 @@ Query your Obsidian vault using AI, get contextual answers with proper citations
 -   Configure which files and folders to include or exclude from scanning
 -   Highlight and copy results easily
 
+For a detailed list of changes between versions, see the [Changelog](CHANGELOG.md).
+
 ## Screenshots
 
 ![Query interface](images/ask_1.png)

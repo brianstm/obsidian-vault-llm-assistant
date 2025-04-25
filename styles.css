@@ -217,6 +217,7 @@
 	font-size: 13px;
 }
 
+/* Link specific styling */
 .vault-llm-link {
 	color: var(--link-color) !important;
 	text-decoration: none;
@@ -230,6 +231,15 @@
 .vault-llm-link:hover {
 	background-color: rgba(var(--link-color-rgb), 0.1);
 	border-radius: 2px;
+}
+
+/* Class for links that need to be explicitly visible */
+.vault-llm-visible-link {
+	color: var(--link-color) !important;
+	opacity: 1 !important;
+	text-decoration: none;
+	display: inline-block;
+	font-weight: 500;
 }
 
 .vault-llm-answer p {
@@ -270,8 +280,8 @@
 }
 
 .vault-llm-apikey-input {
-	flex-grow: 1;
-	margin-right: 8px;
+	width: 300px !important;
+	margin-right: 5px;
 	font-family: var(--font-monospace);
 }
 
@@ -515,4 +525,109 @@
 .vault-llm-source-file {
 	font-family: var(--font-monospace);
 	word-break: break-all;
+}
+
+/* Vault LLM Assistant Styles */
+
+.vault-llm-assistant-modal textarea {
+	width: 100%;
+}
+
+.vault-llm-button-container {
+	margin-top: 10px;
+}
+
+.vault-llm-button-container button + button {
+	margin-left: 10px;
+}
+
+.vault-llm-wide-dropdown {
+	min-width: 200px;
+}
+
+.vault-llm-apikey-container {
+	display: flex;
+	width: 100%;
+}
+
+.vault-llm-apikey-input {
+	flex-grow: 1;
+}
+
+.vault-llm-visibility-toggle {
+	margin-left: 8px;
+}
+
+.vault-llm-slider-container {
+	display: flex;
+	align-items: center;
+	width: 100%;
+}
+
+.vault-llm-slider {
+	flex-grow: 1;
+}
+
+.vault-llm-slider-value {
+	margin-left: 10px;
+	min-width: 40px;
+	text-align: right;
+}
+
+.vault-llm-folder-section {
+	margin-top: 20px;
+}
+
+.vault-llm-folder-subsection {
+	margin-bottom: 15px;
+}
+
+.vault-llm-section-header {
+	margin-bottom: 8px;
+}
+
+.vault-llm-section-desc {
+	margin-top: 0;
+	opacity: 0.8;
+}
+
+.vault-llm-folder-input-container {
+	display: flex;
+	margin-top: 8px;
+}
+
+.vault-llm-folder-textbox {
+	flex-grow: 1;
+}
+
+.vault-llm-folder-add-button {
+	margin-left: 8px;
+}
+
+.vault-llm-excluded-list {
+	margin: 8px 0;
+}
+
+.vault-llm-folder-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 6px;
+	padding: 4px;
+	border-radius: 4px;
+	background-color: var(--background-secondary);
+}
+
+.vault-llm-folder-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vault-llm-folder-remove-button {
+	margin-left: 8px;
+}
+
+.vault-llm-empty-list {
+	opacity: 0.6;
+	font-style: italic;
 }
