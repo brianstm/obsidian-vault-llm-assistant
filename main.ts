@@ -132,7 +132,7 @@ export default class VaultLLMAssistant extends Plugin {
 				this.settings.encryptedOpenAIApiKey
 			);
 		}
-		
+
 		if (this.settings.encryptedGeminiApiKey) {
 			this.geminiApiKey = this.decryptApiKey(
 				this.settings.encryptedGeminiApiKey
@@ -157,12 +157,12 @@ export default class VaultLLMAssistant extends Plugin {
 					this.settings.encryptedGeminiApiKey =
 						this.encryptApiKey(oldKey);
 				}
-				
+
 				delete (this.settings as any).encryptedApiKey;
 				await this.saveSettings();
 			}
 		}
-		
+
 		// Remove any plaintext API key that might still be in the settings
 		if ((this.settings as any).apiKey) {
 			// Migrate plaintext key to encrypted format
@@ -170,13 +170,15 @@ export default class VaultLLMAssistant extends Plugin {
 				const apiKey = (this.settings as any).apiKey;
 				if (this.settings.modelProvider === "gpt") {
 					this.openAIApiKey = apiKey;
-					this.settings.encryptedOpenAIApiKey = this.encryptApiKey(apiKey);
+					this.settings.encryptedOpenAIApiKey =
+						this.encryptApiKey(apiKey);
 				} else if (this.settings.modelProvider === "gemini") {
 					this.geminiApiKey = apiKey;
-					this.settings.encryptedGeminiApiKey = this.encryptApiKey(apiKey);
+					this.settings.encryptedGeminiApiKey =
+						this.encryptApiKey(apiKey);
 				}
 			}
-			
+
 			delete (this.settings as any).apiKey;
 			await this.saveSettings();
 		}
@@ -193,15 +195,21 @@ export default class VaultLLMAssistant extends Plugin {
 	 * Opens the assistant view in the right sidebar
 	 */
 	async activateView() {
-		// Following Obsidian guidelines to not detach leaves
+		this.app.workspace.detachLeavesOfType("vault-llm-assistant-view");
+
 		const leaf = this.app.workspace.getRightLeaf(false);
-		
 		if (leaf) {
 			await leaf.setViewState({
 				type: "vault-llm-assistant-view",
 				active: true,
 			});
-			this.app.workspace.revealLeaf(leaf);
+		}
+
+		const leaves = this.app.workspace.getLeavesOfType(
+			"vault-llm-assistant-view"
+		);
+		if (leaves.length > 0) {
+			this.app.workspace.revealLeaf(leaves[0]);
 		}
 	}
 
@@ -249,7 +257,7 @@ export default class VaultLLMAssistant extends Plugin {
 		let allContents = "";
 		for (const file of files) {
 			try {
-				const content = await vault.read(file);
+				const content = await vault.cachedRead(file);
 				allContents += `FILE: ${file.path}\n\n${content}\n\n`;
 			} catch (error) {
 				console.error(`Error reading file ${file.path}:`, error);
@@ -574,7 +582,7 @@ Topic to create a note about: ${query}`;
 
 			const fileName =
 				cleanTitle ||
-				`LLM Response ${new Date().toISOString().slice(0, 10)}`;
+				`LLM response ${new Date().toISOString().slice(0, 10)}`;
 
 			let folderPath = this.settings.newNoteFolder.trim();
 			if (folderPath && !folderPath.endsWith("/")) {
@@ -638,11 +646,11 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 
 			return (
 				cleanTitle ||
-				`LLM Response ${new Date().toISOString().slice(0, 10)}`
+				`LLM response ${new Date().toISOString().slice(0, 10)}`
 			);
 		} catch (error) {
 			console.error("Error generating title:", error);
-			return `LLM Response ${new Date().toISOString().slice(0, 10)}`;
+			return `LLM response ${new Date().toISOString().slice(0, 10)}`;
 		}
 	}
 
@@ -929,7 +937,10 @@ class QueryModal extends Modal {
 					return;
 				}
 
-				let title = this.query;
+				let title = `LLM response ${new Date()
+					.toISOString()
+					.slice(0, 10)}`;
+
 				if (this.plugin.settings.generateTitlesWithLLM) {
 					try {
 						title = await this.plugin.generateTitleForResponse(
@@ -1354,7 +1365,7 @@ class VaultLLMAssistantView extends View {
 				}
 
 				const retryButton = responseContainer.createEl("button", {
-					text: "Try Again",
+					text: "Try again",
 					cls: "vault-llm-action-button",
 				});
 
@@ -1369,7 +1380,8 @@ class VaultLLMAssistantView extends View {
 				cls: "vault-llm-answer",
 			});
 
-			MarkdownRenderer.renderMarkdown(
+			await MarkdownRenderer.render(
+				this.app,
 				response,
 				answerContainer,
 				currentFile ? currentFile.path : "/",
@@ -1383,7 +1395,7 @@ class VaultLLMAssistantView extends View {
 			});
 
 			const copyTextButton = actionButtonsContainer.createEl("button", {
-				text: "Copy Text",
+				text: "Copy text",
 				cls: "vault-llm-action-button",
 			});
 
@@ -1396,7 +1408,7 @@ class VaultLLMAssistantView extends View {
 			const copyMarkdownButton = actionButtonsContainer.createEl(
 				"button",
 				{
-					text: "Copy Markdown",
+					text: "Copy markdown",
 					cls: "vault-llm-action-button",
 				}
 			);
@@ -1407,12 +1419,12 @@ class VaultLLMAssistantView extends View {
 			});
 
 			const createNoteButton = actionButtonsContainer.createEl("button", {
-				text: "Create Note",
+				text: "Create note",
 				cls: "vault-llm-action-button",
 			});
 
 			createNoteButton.addEventListener("click", async () => {
-				let noteTitle = `LLM Response ${new Date()
+				let noteTitle = `LLM response ${new Date()
 					.toISOString()
 					.slice(0, 10)}`;
 
@@ -1671,7 +1683,7 @@ class VaultLLMAssistantView extends View {
 				while (paragraph.firstChild) {
 					paragraph.removeChild(paragraph.firstChild);
 				}
-				
+
 				paragraph.appendChild(fragment);
 			}
 		});
@@ -1700,11 +1712,9 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass("vault-llm-settings");
 
-		containerEl.createEl("h2", { text: "Vault LLM Assistant Settings" });
-
 		// LLM Provider setting
 		new Setting(containerEl)
-			.setName("LLM Provider")
+			.setName("LLM provider")
 			.setDesc("Select which LLM provider to use")
 			.addDropdown((dropdown) => {
 				const dropdownEl = dropdown
@@ -1740,7 +1750,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// OpenAI API Key
 		const openAIApiKeySetting = new Setting(containerEl)
-			.setName("OpenAI API Key")
+			.setName("OpenAI API key")
 			.setDesc(
 				`Enter your OpenAI API key ${
 					this.plugin.settings.modelProvider === "gpt"
@@ -1794,7 +1804,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Gemini API Key
 		const geminiApiKeySetting = new Setting(containerEl)
-			.setName("Gemini API Key")
+			.setName("Gemini API key")
 			.setDesc(
 				`Enter your Google Gemini API key ${
 					this.plugin.settings.modelProvider === "gemini"
@@ -1849,7 +1859,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 		// Model selection
 		if (this.plugin.settings.modelProvider === "gpt") {
 			new Setting(containerEl)
-				.setName("GPT Model")
+				.setName("GPT model")
 				.setDesc("Select which GPT model to use")
 				.addDropdown((dropdown) => {
 					const dropdownEl = dropdown
@@ -1865,13 +1875,12 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 							this.plugin.settings.model = value;
 							await this.plugin.saveSettings();
 						});
-					// Make dropdown wider
 					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 					return dropdown;
 				});
 		} else if (this.plugin.settings.modelProvider === "gemini") {
 			new Setting(containerEl)
-				.setName("Gemini Model")
+				.setName("Gemini model")
 				.setDesc("Select which Gemini model to use")
 				.addDropdown((dropdown) => {
 					const dropdownEl = dropdown
@@ -1887,7 +1896,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 							this.plugin.settings.model = value;
 							await this.plugin.saveSettings();
 						});
-					// Make dropdown wider
 					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 					return dropdown;
 				});
@@ -1895,7 +1903,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Max Tokens with improved display
 		const maxTokensSetting = new Setting(containerEl)
-			.setName("Max Tokens")
+			.setName("Max tokens")
 			.setDesc("Maximum number of tokens in the response");
 
 		// Container for slider and value display
@@ -1951,7 +1959,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Include current file only
 		new Setting(containerEl)
-			.setName("Include Current File Only")
+			.setName("Include current file only")
 			.setDesc(
 				"When enabled, only scans the current file instead of the entire vault"
 			)
@@ -1966,9 +1974,9 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Default folder for new notes
 		new Setting(containerEl)
-			.setName("Default Folder for New Notes")
+			.setName("Default folder for new notes")
 			.setDesc(
-				"Path where new notes will be created when using 'Create Note from Answer' (leave empty for vault root)"
+				"Path where new notes will be created when using 'Create note from answer' (leave empty for vault root)"
 			)
 			.addText((text) =>
 				text
@@ -1982,7 +1990,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Use LLM for note titles
 		new Setting(containerEl)
-			.setName("Generate Note Titles with LLM")
+			.setName("Generate note titles with LLM")
 			.setDesc(
 				"When enabled, uses the LLM to generate descriptive titles for new notes (uses additional API calls)"
 			)
@@ -1997,7 +2005,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 		// Use vault content in prompts
 		new Setting(containerEl)
-			.setName("Use Vault Content in Prompts")
+			.setName("Use vault content in prompts")
 			.setDesc("When enabled, includes the vault content in prompts")
 			.addToggle((toggle) =>
 				toggle
@@ -2015,13 +2023,12 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			.addDropdown((dropdown) => {
 				const dropdownEl = dropdown
 					.addOption("query", "Query")
-					.addOption("create", "Create Notes")
+					.addOption("create", "Create notes")
 					.setValue(this.plugin.settings.mode)
 					.onChange(async (value) => {
 						this.plugin.settings.mode = value as "query" | "create";
 						await this.plugin.saveSettings();
 					});
-				// Make dropdown wider
 				dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 				return dropdown;
 			});
@@ -2036,7 +2043,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			cls: "vault-llm-folder-subsection",
 		});
 		includeFolderSection.createEl("h3", {
-			text: "Include Folders",
+			text: "Include folders",
 			cls: "vault-llm-section-header",
 		});
 
@@ -2076,7 +2083,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			cls: "vault-llm-folder-subsection",
 		});
 		excludeFolderSection.createEl("h3", {
-			text: "Exclude Folders",
+			text: "Exclude folders",
 			cls: "vault-llm-section-header",
 		});
 
