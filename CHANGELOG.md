@@ -2,6 +2,16 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.0.5 - 2024-06-16
+
+### Improvements
+- Updated UI text to follow Obsidian sentence case guidelines
+- Added proper support for ensureSideLeaf API
+- Fixed multiple code standards to comply with Obsidian plugin guidelines
+
+### Security
+- Further improved encrypted API key handling
+
 ## 1.0.4 - 2024-06-16
 
 ### Security
