@@ -1,8 +1,8 @@
 {
 	"id": "vault-llm-assistant",
 	"name": "Vault LLM Assistant",
-	"version": "1.0.5",
-	"minAppVersion": "1.7.2",
+	"version": "1.0.6",
+	"minAppVersion": "1.7.3",
 	"description": "Uses AI to answer questions and create notes about your vault with proper citations",
 	"author": "Brians Tjipto",
 	"authorUrl": "https://github.com/brianstm",
