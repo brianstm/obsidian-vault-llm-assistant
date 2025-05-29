@@ -1408,7 +1408,7 @@ class VaultLLMAssistantView extends View {
 			const copyMarkdownButton = actionButtonsContainer.createEl(
 				"button",
 				{
-					text: "Copy markdown",
+					text: "Copy Markdown",
 					cls: "vault-llm-action-button",
 				}
 			);
