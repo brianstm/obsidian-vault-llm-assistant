@@ -38,7 +38,7 @@ For a detailed list of changes between versions, see the [Changelog](CHANGELOG.m
 
 ### From Obsidian Community Plugins
 
-1. Open Obsidian Settings → Community Plugins
+1. Open Obsidian Settings → Community Plugins or use this link [https://obsidian.md/plugins?id=vault-llm-assistant](https://obsidian.md/plugins?id=vault-llm-assistant)
 2. Disable Safe Mode if necessary
 3. Click "Browse" and search for "Vault LLM Assistant"
 4. Click Install and enable the plugin
