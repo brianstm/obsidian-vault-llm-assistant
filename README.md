@@ -22,6 +22,7 @@ Query your Obsidian vault using AI, get contextual answers with proper citations
 -   Copy results as text or markdown with one click
 -   Create new notes from responses with AI-generated titles
 -   Support for OpenAI GPT and Google Gemini models
+-   Support for local LLM (LM Studio)
 -   Configure which files and folders to include or exclude from scanning
 -   Highlight and copy results easily
 
