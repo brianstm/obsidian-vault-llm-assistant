@@ -3,22 +3,22 @@
  */
 
 import {
-	App,
-	Component,
-	Editor,
-	MarkdownView,
-	Modal,
-	Notice,
-	Plugin,
-	PluginSettingTab,
-	Setting,
-	TFile,
-	View,
-	WorkspaceLeaf,
-	requestUrl,
-	RequestUrlResponse,
-	TextComponent,
-	SliderComponent,
+    App,
+    Component,
+    Editor,
+    MarkdownView,
+    Modal,
+    Notice,
+    Plugin,
+    PluginSettingTab,
+    Setting,
+    TFile,
+    View,
+    WorkspaceLeaf,
+    requestUrl,
+    RequestUrlResponse,
+    TextComponent,
+    SliderComponent,
 } from "obsidian";
 import { MarkdownRenderer } from "obsidian";
 
@@ -290,8 +290,8 @@ export default class VaultLLMAssistant extends Plugin {
 
 			if (this.settings.mode === "query") {
 				if (this.settings.useVaultContent) {
-					prompt = `You are a helpful assistant for the user's Obsidian vault. 
-You have access to the user's notes which are provided below. 
+					prompt = `You are a helpful assistant for the user's Obsidian vault.
+You have access to the user's notes which are provided below.
 Please answer the user's question based on the information in these notes.
 When referencing content from notes, cite the source file using the format [[file_path]].
 Format your responses in Markdown. Format code blocks with the appropriate language annotation for syntax highlighting.
@@ -312,8 +312,8 @@ User's Question: ${query}`;
 				}
 			} else if (this.settings.mode === "create") {
 				if (this.settings.useVaultContent) {
-					prompt = `You are a helpful assistant for creating new notes in the user's Obsidian vault. 
-You have access to the user's existing notes which are provided below. 
+					prompt = `You are a helpful assistant for creating new notes in the user's Obsidian vault.
+You have access to the user's existing notes which are provided below.
 Please create a comprehensive note about the requested topic, incorporating relevant information from the existing notes when applicable.
 When referencing content from existing notes, cite the source file using the format [[file_path]].
 
@@ -329,7 +329,7 @@ ${currentFilePath ? `Current file: ${currentFilePath}` : ""}
 
 Topic to create a note about: ${query}`;
 				} else {
-					prompt = `You are a helpful assistant for creating new notes. 
+					prompt = `You are a helpful assistant for creating new notes.
 Please create a comprehensive note about the requested topic.
 
 IMPORTANT: Respond ONLY with the note content directly, without any additional text, introductions, or wrapper. DO NOT include \`\`\`md at the beginning or \`\`\` at the end.
@@ -1243,6 +1243,12 @@ class VaultLLMAssistantView extends View {
 				queryEl.createSpan({ text: query });
 			}
 
+			// Add model indicator
+			queryEl.createSpan({
+				cls: "vault-llm-model-badge",
+				text: this.plugin.settings.model,
+			});
+
 			if (
 				this.plugin.settings.useVaultContent &&
 				vaultContent.trim() !== ""
@@ -1866,7 +1872,10 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 						.addOption("gpt-3.5-turbo", "GPT-3.5 Turbo")
 						.addOption("gpt-4", "GPT-4")
 						.addOption("gpt-4-turbo", "GPT-4 Turbo")
+						.addOption("gpt-4o", "GPT-4o")
 						.addOption("gpt-4o-mini", "GPT-4o Mini")
+						.addOption("gpt-5", "GPT-5")
+						.addOption("gpt-5-mini", "GPT-5 Mini")
 						.addOption("gpt-4.1", "GPT-4.1")
 						.addOption("gpt-4.1-mini", "GPT-4.1 Mini")
 						.addOption("gpt-4.1-nano", "GPT-4.1 Nano")
@@ -1887,6 +1896,9 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 						.addOption("gemini-pro", "Gemini Pro")
 						.addOption("gemini-1.5-pro", "Gemini 1.5 Pro")
 						.addOption("gemini-2.0-flash", "Gemini 2.0 Flash")
+						.addOption("gemini-2.5-flash", "Gemini 2.5 Flash")
+						.addOption("gemini-2.5-pro", "Gemini 2.5 Pro")
+						.addOption("gemini-3-pro-preview", "Gemini 3.0 Pro (Preview)")
 						.addOption(
 							"gemini-2.5-pro-preview-03-25",
 							"Gemini 2.5 Pro Preview 03-25"
