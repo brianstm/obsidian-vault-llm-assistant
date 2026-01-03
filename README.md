@@ -22,6 +22,7 @@ Query your Obsidian vault using AI, get contextual answers with proper citations
 -   Copy results as text or markdown with one click
 -   Create new notes from responses with AI-generated titles
 -   Support for OpenAI GPT and Google Gemini models
+-   Support for local LLM (LM Studio)
 -   Configure which files and folders to include or exclude from scanning
 -   Highlight and copy results easily
 
@@ -31,7 +32,6 @@ For a detailed list of changes between versions, see the [Changelog](CHANGELOG.m
 
 ![Query interface](images/ask_1.png)
 ![Generated notes view](images/generated_notes.png)
-
 ![Create interface](images/create_1.png)
 
 ## Installation
@@ -101,6 +101,7 @@ Access plugin settings via Settings → Community Plugins → Vault LLM Assistan
 
 -   **OpenAI**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 -   **Google Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat)
+-   **Local LLM (LM Studio)**
 
 ## Local Development
 

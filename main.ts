@@ -3,22 +3,22 @@
  */
 
 import {
-    App,
-    Component,
-    Editor,
-    MarkdownView,
-    Modal,
-    Notice,
-    Plugin,
-    PluginSettingTab,
-    Setting,
-    TFile,
-    View,
-    WorkspaceLeaf,
-    requestUrl,
-    RequestUrlResponse,
-    TextComponent,
-    SliderComponent,
+	App,
+	Component,
+	Editor,
+	MarkdownView,
+	Modal,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile,
+	View,
+	WorkspaceLeaf,
+	requestUrl,
+	RequestUrlResponse,
+	TextComponent,
+	SliderComponent,
 } from "obsidian";
 import { MarkdownRenderer } from "obsidian";
 
@@ -38,6 +38,9 @@ interface VaultLLMAssistantSettings {
 	apiEndpoint: string;
 	modelProvider: string;
 	model: string;
+	lmStudioApiUrl: string;
+	lmStudioModel: string;
+	useLocalLLM: boolean;
 	maxTokens: number;
 	temperature: number;
 	includeCurrentFileOnly: boolean;
@@ -55,9 +58,12 @@ interface VaultLLMAssistantSettings {
 const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	encryptedOpenAIApiKey: "",
 	encryptedGeminiApiKey: "",
-	apiEndpoint: "https://api.openai.com/v1/chat/completions",
-	modelProvider: "gpt",
-	model: "gpt-4o-mini",
+	apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models",
+	modelProvider: "gemini",
+	model: "gemini-3-pro-preview",
+	lmStudioApiUrl: "http://localhost:1234/v1",
+	lmStudioModel: "local-model",
+	useLocalLLM: false,
 	maxTokens: 2000,
 	temperature: 0.7,
 	includeCurrentFileOnly: false,
@@ -347,12 +353,16 @@ Topic to create a note about: ${query}`;
 
 			let response: string;
 
-			if (this.settings.modelProvider === "gpt") {
-				response = await this.queryGPT(prompt);
-			} else if (this.settings.modelProvider === "gemini") {
-				response = await this.queryGemini(prompt);
+			if (this.settings.useLocalLLM) {
+				response = await this.queryLMStudio(prompt);
 			} else {
-				throw new Error("Unknown model provider");
+				if (this.settings.modelProvider === "gpt") {
+					response = await this.queryGPT(prompt);
+				} else if (this.settings.modelProvider === "gemini") {
+					response = await this.queryGemini(prompt);
+				} else {
+					throw new Error("Unknown model provider");
+				}
 			}
 
 			if (this.settings.mode === "create") {
@@ -484,9 +494,8 @@ Topic to create a note about: ${query}`;
 							"OpenAI server error. Please try again later.";
 						break;
 					default:
-						errorMessage += `Status ${error.status}: ${
-							error.message || "Unknown error"
-						}`;
+						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"
+							}`;
 				}
 			} else if (error.message) {
 				errorMessage += error.message;
@@ -507,9 +516,8 @@ Topic to create a note about: ${query}`;
 	async queryGemini(prompt: string): Promise<string> {
 		try {
 			const response = await requestUrl({
-				url: `https://generativelanguage.googleapis.com/v1beta/models/${
-					this.settings.model
-				}:generateContent?key=${this.getApiKey()}`,
+				url: `https://generativelanguage.googleapis.com/v1beta/models/${this.settings.model
+					}:generateContent?key=${this.getApiKey()}`,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -533,9 +541,8 @@ Topic to create a note about: ${query}`;
 			}
 
 			if (jsonResponse.error) {
-				return `Gemini API Error: ${
-					jsonResponse.error.message || "Unknown error"
-				}`;
+				return `Gemini API Error: ${jsonResponse.error.message || "Unknown error"
+					}`;
 			}
 
 			return "No response generated.";
@@ -589,12 +596,96 @@ Topic to create a note about: ${query}`;
 							"Gemini server error. Please try again later.";
 						break;
 					default:
-						errorMessage += `Status ${error.status}: ${
-							error.message || "Unknown error"
-						}`;
+						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"
+							}`;
 				}
 			} else if (error.message) {
 				errorMessage += error.message;
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
+		}
+	}
+
+	/**
+	 * Queries LM Studio (local LLM) with the prepared prompt
+	 * Uses OpenAI-compatible API structure
+	 *
+	 * @param prompt - Formatted prompt with system instructions and context
+	 * @returns The model's response or a formatted error message
+	 */
+	async queryLMStudio(prompt: string): Promise<string> {
+		try {
+			// Ensure URL ends with /chat/completions if not present, but respect user's base URL
+			let url = this.settings.lmStudioApiUrl;
+			if (!url.endsWith("/chat/completions")) {
+				if (url.endsWith("/")) {
+					url += "chat/completions";
+				} else {
+					url += "/chat/completions";
+				}
+			}
+
+			const response = await requestUrl({
+				url: url,
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					model: this.settings.lmStudioModel,
+					messages: [
+						{
+							role: "system",
+							content:
+								"You are a helpful assistant that answers questions about the user's Obsidian vault content.",
+						},
+						{
+							role: "user",
+							content: prompt,
+						},
+					],
+					max_tokens: this.settings.maxTokens,
+					temperature: this.settings.temperature,
+				}),
+			});
+
+			const jsonResponse = response.json;
+			if (jsonResponse.choices && jsonResponse.choices.length > 0) {
+				return jsonResponse.choices[0].message.content;
+			}
+			return "No response generated.";
+		} catch (error) {
+			console.error("Error querying LM Studio:", error);
+
+			let errorMessage = "Error querying LM Studio: ";
+
+			if (error.status) {
+				switch (error.status) {
+					case 404:
+						errorMessage +=
+							"Endpoint not found. Check your LM Studio URL setting.";
+						break;
+					case 500:
+						errorMessage +=
+							"Server error. Check LM Studio logs.";
+						break;
+					case 0: // Connection refused often shows as status 0 in some contexts or needs specific handling
+						errorMessage +=
+							"Connection failed. Is LM Studio running and the server started?";
+						break;
+					default:
+						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"
+							}`;
+				}
+			} else if (error.message) {
+				if (error.message.includes("Connection refused") || error.message.includes("Failed to fetch")) {
+					errorMessage += "Connection failed. Is LM Studio running and the server started?";
+				} else {
+					errorMessage += error.message;
+				}
 			} else {
 				errorMessage += "Unknown error occurred";
 			}
@@ -700,12 +791,16 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 
 			let titleResponse: string;
 
-			if (this.settings.modelProvider === "gpt") {
-				titleResponse = await this.queryGPT(prompt);
-			} else if (this.settings.modelProvider === "gemini") {
-				titleResponse = await this.queryGemini(prompt);
+			if (this.settings.useLocalLLM) {
+				titleResponse = await this.queryLMStudio(prompt);
 			} else {
-				throw new Error("Unknown model provider");
+				if (this.settings.modelProvider === "gpt") {
+					titleResponse = await this.queryGPT(prompt);
+				} else if (this.settings.modelProvider === "gemini") {
+					titleResponse = await this.queryGemini(prompt);
+				} else {
+					throw new Error("Unknown model provider");
+				}
 			}
 
 			// Clean up title
@@ -819,6 +914,9 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	 * Gets the API key for the current provider
 	 */
 	getApiKey(): string {
+		if (this.settings.useLocalLLM) {
+			return "";
+		}
 		if (this.settings.modelProvider === "gpt") {
 			return this.openAIApiKey;
 		} else if (this.settings.modelProvider === "gemini") {
@@ -1771,148 +1869,187 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 		containerEl.addClass("vault-llm-settings");
 
 		// LLM Provider setting
+
+		// 1. Use Local LLM Checkbox
 		new Setting(containerEl)
-			.setName("LLM provider")
-			.setDesc("Select which LLM provider to use")
-			.addDropdown((dropdown) => {
-				const dropdownEl = dropdown
-					.addOption("gpt", "OpenAI GPT")
-					.addOption("gemini", "Google Gemini")
-					.setValue(this.plugin.settings.modelProvider)
-					.onChange(async (value) => {
-						this.plugin.settings.modelProvider = value;
-
-						// Update endpoints and default model based on provider
-						if (value === "gpt") {
-							this.plugin.settings.apiEndpoint =
-								"https://api.openai.com/v1/chat/completions";
-							if (!this.plugin.settings.model.startsWith("gpt")) {
-								this.plugin.settings.model = "gpt-4o-mini";
-							}
-						} else if (value === "gemini") {
-							this.plugin.settings.apiEndpoint =
-								"https://generativelanguage.googleapis.com/v1beta/models";
-							if (
-								!this.plugin.settings.model.startsWith("gemini")
-							) {
-								this.plugin.settings.model = "gemini-2.0-flash";
-							}
-						}
-
+			.setName("Use Local LLM (LM Studio)")
+			.setDesc("Toggle to use a local LLM server instead of online providers")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useLocalLLM)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.useLocalLLM = value;
 						await this.plugin.saveSettings();
-						this.display(); // Redraw the settings
-					});
-				dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
-				return dropdown;
-			});
-
-		// OpenAI API Key
-		const openAIApiKeySetting = new Setting(containerEl)
-			.setName("OpenAI API key")
-			.setDesc(
-				`Enter your OpenAI API key ${
-					this.plugin.settings.modelProvider === "gpt"
-						? "(Required)"
-						: "(Optional)"
-				}`
+						this.display(); // Redraw settings
+					})
 			);
 
-		// Create container for OpenAI API key input and toggle button
-		const openAIApiKeyContainer = createDiv({
-			cls: "vault-llm-apikey-container",
-		});
-		openAIApiKeySetting.controlEl.appendChild(openAIApiKeyContainer);
+		// 2. Online Provider Selection (Only if NOT using local LLM)
+		if (!this.plugin.settings.useLocalLLM) {
+			new Setting(containerEl)
+				.setName("Online Provider")
+				.setDesc("Select which online LLM provider to use")
+				.addDropdown((dropdown) => {
+					const dropdownEl = dropdown
+						.addOption("gpt", "OpenAI GPT")
+						.addOption("gemini", "Google Gemini")
+						.setValue(this.plugin.settings.modelProvider)
+						.onChange(async (value) => {
+							this.plugin.settings.modelProvider = value;
 
-		// Add text input for OpenAI
-		const openAIApiKeyInput = new TextComponent(openAIApiKeyContainer);
-		openAIApiKeyInput
-			.setPlaceholder("Enter your OpenAI API key")
-			.setValue(
-				this.openAIApiKeyVisible
-					? this.plugin.getOpenAIApiKey()
-					: "••••••••••••••••••••••••••"
-			)
-			.onChange(async (value: string) => {
-				await this.plugin.setApiKey(value, "gpt");
+							// Update endpoints and default model based on provider
+							if (value === "gpt") {
+								this.plugin.settings.apiEndpoint =
+									"https://api.openai.com/v1/chat/completions";
+								if (!this.plugin.settings.model.startsWith("gpt")) {
+									this.plugin.settings.model = "gpt-4o-mini";
+								}
+							} else if (value === "gemini") {
+								this.plugin.settings.apiEndpoint =
+									"https://generativelanguage.googleapis.com/v1beta/models";
+								if (
+									!this.plugin.settings.model.startsWith("gemini")
+								) {
+									this.plugin.settings.model = "gemini-3-pro-preview";
+								}
+							}
+
+							await this.plugin.saveSettings();
+							this.display(); // Redraw the settings
+						});
+					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
+					return dropdown;
+				});
+		}
+
+		// 3. LM Studio Settings (Only if using local LLM)
+		if (this.plugin.settings.useLocalLLM) {
+			new Setting(containerEl)
+				.setName("LM Studio API URL")
+				.setDesc("The base URL for your local LM Studio server (e.g., http://localhost:1234/v1)")
+				.addText((text: TextComponent) =>
+					text
+						.setPlaceholder("http://localhost:1234/v1")
+						.setValue(this.plugin.settings.lmStudioApiUrl)
+						.onChange(async (value: string) => {
+							this.plugin.settings.lmStudioApiUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("LM Studio Model Name")
+				.setDesc("The model identifier to use (check LM Studio server logs for the loaded model ID)")
+				.addText((text: TextComponent) =>
+					text
+						.setPlaceholder("local-model")
+						.setValue(this.plugin.settings.lmStudioModel)
+						.onChange(async (value: string) => {
+							this.plugin.settings.lmStudioModel = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// OpenAI API Key (Only if Online AND Provider is GPT)
+		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gpt") {
+			const openAIApiKeySetting = new Setting(containerEl)
+				.setName("OpenAI API key")
+				.setDesc("Enter your OpenAI API key (Required)");
+
+			// Create container for OpenAI API key input and toggle button
+			const openAIApiKeyContainer = createDiv({
+				cls: "vault-llm-apikey-container",
 			});
-		openAIApiKeyInput.inputEl.type = this.openAIApiKeyVisible
-			? "text"
-			: "password";
-		openAIApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+			openAIApiKeySetting.controlEl.appendChild(openAIApiKeyContainer);
 
-		// Add visibility toggle button for OpenAI
-		const openAIToggleButton = openAIApiKeyContainer.createEl("button", {
-			cls: "vault-llm-visibility-toggle",
-			text: this.openAIApiKeyVisible ? "Hide" : "Show",
-		});
-		openAIToggleButton.addEventListener("click", () => {
-			this.openAIApiKeyVisible = !this.openAIApiKeyVisible;
+			// Add text input for OpenAI
+			const openAIApiKeyInput = new TextComponent(openAIApiKeyContainer);
+			openAIApiKeyInput
+				.setPlaceholder("Enter your OpenAI API key")
+				.setValue(
+					this.openAIApiKeyVisible
+						? this.plugin.getOpenAIApiKey()
+						: "••••••••••••••••••••••••••"
+				)
+				.onChange(async (value: string) => {
+					await this.plugin.setApiKey(value, "gpt");
+				});
 			openAIApiKeyInput.inputEl.type = this.openAIApiKeyVisible
 				? "text"
 				: "password";
-			openAIApiKeyInput.setValue(
-				this.openAIApiKeyVisible
-					? this.plugin.getOpenAIApiKey()
-					: "••••••••••••••••••••••••••"
-			);
-			openAIToggleButton.textContent = this.openAIApiKeyVisible
-				? "Hide"
-				: "Show";
-		});
+			openAIApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
 
-		// Gemini API Key
-		const geminiApiKeySetting = new Setting(containerEl)
-			.setName("Gemini API key")
-			.setDesc(
-				`Enter your Google Gemini API key ${
-					this.plugin.settings.modelProvider === "gemini"
-						? "(Required)"
-						: "(Optional)"
-				}`
-			);
-
-		// Create container for Gemini API key input and toggle button
-		const geminiApiKeyContainer = createDiv({
-			cls: "vault-llm-apikey-container",
-		});
-		geminiApiKeySetting.controlEl.appendChild(geminiApiKeyContainer);
-
-		// Add text input for Gemini
-		const geminiApiKeyInput = new TextComponent(geminiApiKeyContainer);
-		geminiApiKeyInput
-			.setPlaceholder("Enter your Gemini API key")
-			.setValue(
-				this.geminiApiKeyVisible
-					? this.plugin.getGeminiApiKey()
-					: "••••••••••••••••••••••••••"
-			)
-			.onChange(async (value: string) => {
-				await this.plugin.setApiKey(value, "gemini");
+			// Add visibility toggle button for OpenAI
+			const openAIToggleButton = openAIApiKeyContainer.createEl("button", {
+				cls: "vault-llm-visibility-toggle",
+				text: this.openAIApiKeyVisible ? "Hide" : "Show",
 			});
-		geminiApiKeyInput.inputEl.type = this.geminiApiKeyVisible
-			? "text"
-			: "password";
-		geminiApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+			openAIToggleButton.addEventListener("click", () => {
+				this.openAIApiKeyVisible = !this.openAIApiKeyVisible;
+				openAIApiKeyInput.inputEl.type = this.openAIApiKeyVisible
+					? "text"
+					: "password";
+				openAIApiKeyInput.setValue(
+					this.openAIApiKeyVisible
+						? this.plugin.getOpenAIApiKey()
+						: "••••••••••••••••••••••••••"
+				);
+				openAIToggleButton.textContent = this.openAIApiKeyVisible
+					? "Hide"
+					: "Show";
+			});
+		}
 
-		// Add visibility toggle button for Gemini
-		const geminiToggleButton = geminiApiKeyContainer.createEl("button", {
-			cls: "vault-llm-visibility-toggle",
-			text: this.geminiApiKeyVisible ? "Hide" : "Show",
-		});
-		geminiToggleButton.addEventListener("click", () => {
-			this.geminiApiKeyVisible = !this.geminiApiKeyVisible;
+		// Gemini API Key (Only if Online AND Provider is Gemini)
+		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gemini") {
+			const geminiApiKeySetting = new Setting(containerEl)
+				.setName("Gemini API key")
+				.setDesc("Enter your Google Gemini API key (Required)");
+
+			// Create container for Gemini API key input and toggle button
+			const geminiApiKeyContainer = createDiv({
+				cls: "vault-llm-apikey-container",
+			});
+			geminiApiKeySetting.controlEl.appendChild(geminiApiKeyContainer);
+
+			// Add text input for Gemini
+			const geminiApiKeyInput = new TextComponent(geminiApiKeyContainer);
+			geminiApiKeyInput
+				.setPlaceholder("Enter your Gemini API key")
+				.setValue(
+					this.geminiApiKeyVisible
+						? this.plugin.getGeminiApiKey()
+						: "••••••••••••••••••••••••••"
+				)
+				.onChange(async (value: string) => {
+					await this.plugin.setApiKey(value, "gemini");
+				});
 			geminiApiKeyInput.inputEl.type = this.geminiApiKeyVisible
 				? "text"
 				: "password";
-			geminiApiKeyInput.setValue(
-				this.geminiApiKeyVisible
-					? this.plugin.getGeminiApiKey()
-					: "••••••••••••••••••••••••••"
-			);
-			geminiToggleButton.textContent = this.geminiApiKeyVisible
-				? "Hide"
-				: "Show";
-		});
+			geminiApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+
+			// Add visibility toggle button for Gemini
+			const geminiToggleButton = geminiApiKeyContainer.createEl("button", {
+				cls: "vault-llm-visibility-toggle",
+				text: this.geminiApiKeyVisible ? "Hide" : "Show",
+			});
+			geminiToggleButton.addEventListener("click", () => {
+				this.geminiApiKeyVisible = !this.geminiApiKeyVisible;
+				geminiApiKeyInput.inputEl.type = this.geminiApiKeyVisible
+					? "text"
+					: "password";
+				geminiApiKeyInput.setValue(
+					this.geminiApiKeyVisible
+						? this.plugin.getGeminiApiKey()
+						: "••••••••••••••••••••••••••"
+				);
+				geminiToggleButton.textContent = this.geminiApiKeyVisible
+					? "Hide"
+					: "Show";
+			});
+		}
 
 		// Test Connection Button
 		const testConnectionSetting = new Setting(containerEl)
@@ -2033,7 +2170,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 
 		// Model selection
-		if (this.plugin.settings.modelProvider === "gpt") {
+		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gpt") {
 			new Setting(containerEl)
 				.setName("GPT model")
 				.setDesc("Select which GPT model to use")
@@ -2052,7 +2189,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 					return dropdown;
 				});
-		} else if (this.plugin.settings.modelProvider === "gemini") {
+		} else if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gemini") {
 			new Setting(containerEl)
 				.setName("Gemini model")
 				.setDesc("Select which Gemini model to use")

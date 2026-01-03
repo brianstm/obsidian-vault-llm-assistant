@@ -2,6 +2,20 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.0.7 - 2025-12-12
+
+### New Features
+
+-   Added support for local LLM (LM Studio)
+
+### User Interface
+
+-   Added badges to see which model is being used
+
+### Improvements
+
+-   Added GPT-5 and Gemini 3 models
+
 ## 1.0.6 - 2025-05-29
 
 ### User Interface
