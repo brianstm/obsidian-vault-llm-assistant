@@ -22,6 +22,12 @@ import {
 } from "obsidian";
 import { MarkdownRenderer } from "obsidian";
 
+// Import models from external file
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const models = require("./models");
+const OPENAI_MODELS = models.OPENAI_MODELS;
+const GEMINI_MODELS = models.GEMINI_MODELS;
+
 /**
  * Plugin Settings Interface
  * Defines all configurable options for the plugin
@@ -296,13 +302,11 @@ export default class VaultLLMAssistant extends Plugin {
 
 			if (this.settings.mode === "query") {
 				if (this.settings.useVaultContent) {
-					prompt = `You are a helpful assistant for the user's Obsidian vault.
-You have access to the user's notes which are provided below.
-Please answer the user's question based on the information in these notes.
-When referencing content from notes, cite the source file using the format [[file_path]].
-Format your responses in Markdown. Format code blocks with the appropriate language annotation for syntax highlighting.
-If you quote or reference content from the vault, make sure to include proper citations, you may include the specific part of the file that you are referencing using the format [[file_path#title_of_the_section_you_are_referencing]] (Do not change the title of the section you are referencing, use the same title as it is in the file with the same capitalization).
-For any code examples, use proper markdown code blocks with language specification.
+					prompt = `You are an expert assistant for the user's Obsidian vault.
+1. Be concise and precise. Minimize filler text and get straight to the answer.
+2. Answer STRICTLY based on the provided notes.
+3. Cite sources using the format [[file_path]].
+4. Use Markdown formatting.
 
 User's Notes:
 ${vaultContent}
@@ -311,8 +315,9 @@ ${currentFilePath ? `Current file: ${currentFilePath}` : ""}
 
 User's Question: ${query}`;
 				} else {
-					prompt = `You are a helpful assistant. Please answer the following question in a clear and concise manner.
-Format your responses in Markdown. Format code blocks with the appropriate language annotation for syntax highlighting.
+					prompt = `You are an expert assistant.
+1. Answer clearly and concisely. Minimize filler text.
+2. Use Markdown formatting.
 
 User's Question: ${query}`;
 				}
@@ -379,29 +384,63 @@ Topic to create a note about: ${query}`;
 	 */
 	async queryGPT(prompt: string): Promise<string> {
 		try {
+            // Find model config
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.settings.model);
+
+            const body: any = {
+                model: this.settings.model,
+                temperature: this.settings.temperature,
+            };
+
+            const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
+
+            if (endpoint === "/v1/responses") {
+                 body.input = [
+                    {
+                        role: "system",
+                        content:
+                            "You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ];
+            } else if (endpoint === "/v1/completions") {
+                body.prompt = prompt;
+                 // Add system prompt to context for completion models roughly
+                body.prompt = "System: You are an expert assistant. Answer concisely.\nUser: " + prompt + "\nAssistant:";
+            } else {
+                 body.messages = [
+                    {
+                        role: "system",
+                        content:
+                            "You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
+                    },
+                    {
+                        role: "user",
+                        content: prompt,
+                    },
+                ];
+            }
+
+            if (modelConfig && modelConfig.useMaxCompletionTokens) {
+                body.max_completion_tokens = this.settings.maxTokens;
+            } else if (endpoint !== "/v1/responses") {
+                body.max_tokens = this.settings.maxTokens;
+            }
+
+            const url = `https://api.openai.com${endpoint}`;
+
 			const response = await requestUrl({
-				url: "https://api.openai.com/v1/chat/completions",
+				url: url,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${this.getApiKey()}`,
 				},
-				body: JSON.stringify({
-					model: this.settings.model,
-					messages: [
-						{
-							role: "system",
-							content:
-								"You are a helpful assistant that answers questions about the user's Obsidian vault content.",
-						},
-						{
-							role: "user",
-							content: prompt,
-						},
-					],
-					max_tokens: this.settings.maxTokens,
-					temperature: this.settings.temperature,
-				}),
+				body: JSON.stringify(body),
 			});
 
 			const jsonResponse = response.json;
@@ -409,10 +448,25 @@ Topic to create a note about: ${query}`;
 				return jsonResponse.choices[0].message.content;
 			}
 			return "No response generated.";
+
 		} catch (error) {
 			console.error("Error querying OpenAI:", error);
 
 			let errorMessage = "Error querying OpenAI: ";
+
+			// Try to extract detailed error from response body if available
+			if (error.text) {
+				try {
+					const errorBody = await error.text();
+					const parsedBody = JSON.parse(errorBody);
+					if (parsedBody.error && parsedBody.error.message) {
+						errorMessage += `Server message: ${parsedBody.error.message}`;
+						return errorMessage;
+					}
+				} catch (e) {
+					// Failed to parse error body, continue with standard error handling
+				}
+			}
 
 			if (error.status) {
 				switch (error.status) {
@@ -492,10 +546,25 @@ Topic to create a note about: ${query}`;
 			}
 
 			return "No response generated.";
+
 		} catch (error) {
 			console.error("Error querying Gemini:", error);
 
 			let errorMessage = "Error querying Gemini: ";
+
+			// Try to extract detailed error from response body if available
+			if (error.text) {
+				try {
+					const errorBody = await error.text();
+					const parsedBody = JSON.parse(errorBody);
+					if (parsedBody.error && parsedBody.error.message) {
+						errorMessage += `Server message: ${parsedBody.error.message}`;
+						return errorMessage;
+					}
+				} catch (e) {
+					// Failed to parse error body, continue with standard error handling
+				}
+			}
 
 			if (error.status) {
 				switch (error.status) {
@@ -950,18 +1019,7 @@ class QueryModal extends Modal {
 			this.processQuery();
 		});
 
-		this.inputEl.addEventListener("keydown", (event) => {
-			if (
-				event.key === "Enter" &&
-				!event.shiftKey &&
-				(event.metaKey || event.ctrlKey)
-			) {
-				event.preventDefault();
-				this.query = this.inputEl.value;
-				this.close();
-				this.processQuery();
-			}
-		});
+
 	}
 
 	/**
@@ -1157,6 +1215,8 @@ class VaultLLMAssistantView extends View {
 			},
 		});
 
+
+
 		const optionsContainer = inputContainer.createDiv({
 			cls: "vault-llm-options-container",
 		});
@@ -1278,15 +1338,7 @@ class VaultLLMAssistantView extends View {
 
 		askButton.addEventListener("click", processQuery);
 
-		queryInput.addEventListener("keydown", (event) => {
-			if (
-				(event.metaKey && event.key === "Enter") ||
-				(event.ctrlKey && event.key === "Enter")
-			) {
-				event.preventDefault();
-				processQuery();
-			}
-		});
+
 
 		containerEl.createDiv({ cls: "vault-llm-response-container" });
 	}
@@ -1999,23 +2051,136 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		}
 
+		// Test Connection Button
+		const testConnectionSetting = new Setting(containerEl)
+			.setName("Test Connection")
+			.setDesc("Verify that your API key and selected model are working correctly")
+			.addButton((button) => {
+				button.setButtonText("Test Connection").onClick(async () => {
+					button.setButtonText("Testing...");
+					button.setDisabled(true);
+
+					try {
+						let result = "";
+						// Use strict 1 token generation to test connection
+						if (this.plugin.settings.modelProvider === "gpt") {
+							// Find model config
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.plugin.settings.model);
+
+                            const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
+                            const body: any = {
+                                model: this.plugin.settings.model,
+                            };
+
+                            const messages = [
+                                {
+                                    role: "user",
+                                    content: "Hi",
+                                },
+                            ];
+
+                            if (endpoint === "/v1/responses") {
+                                body.input = messages;
+                            } else if (endpoint === "/v1/completions") {
+                                body.prompt = "Hi";
+                            } else {
+                                body.messages = messages;
+                            }
+
+                            const maxTokens = 50; // Use 50 to avoid max_tokens errors on reasoning models
+
+                            if (modelConfig && modelConfig.useMaxCompletionTokens) {
+                                body.max_completion_tokens = maxTokens;
+                            } else if (endpoint !== "/v1/responses") {
+                                body.max_tokens = maxTokens;
+                            }
+
+                            const url = `https://api.openai.com${endpoint}`;
+
+							// For GPT, manual simple request
+							const response = await requestUrl({
+								url: url,
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Authorization: `Bearer ${this.plugin.getApiKey()}`,
+								},
+								body: JSON.stringify(body),
+							});
+							if (response.status === 200) {
+								result = "Success";
+							}
+						} else {
+							// For Gemini, manual simple request
+							const response = await requestUrl({
+								url: `https://generativelanguage.googleapis.com/v1beta/models/${
+									this.plugin.settings.model
+								}:generateContent?key=${this.plugin.getApiKey()}`,
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify({
+									contents: [
+										{
+											parts: [{ text: "Hi" }],
+										},
+									],
+									generationConfig: {
+										maxOutputTokens: 1,
+									},
+								}),
+							});
+							// Check for error in JSON response even if status is 200 (common in some APIs, though Gemini usually errors)
+							if (response.status === 200 && !response.json.error) {
+								result = "Success";
+							} else if (response.json.error) {
+								throw new Error(
+									response.json.error.message ||
+										"Unknown Gemini error"
+								);
+							}
+						}
+
+						new Notice(
+							`Connection successful! Connected to ${this.plugin.settings.model}`
+						);
+					} catch (error) {
+						console.error("Connection test failed:", error);
+						let msg = error.message;
+						if (error.text) {
+							// Try to parse detailed error from body if available
+							try {
+								const body = await error.text();
+								const parsed = JSON.parse(body);
+								if (parsed.error && parsed.error.message) {
+									msg = parsed.error.message;
+								}
+							} catch (e) {
+								// ignore
+							}
+						}
+						new Notice(`Connection failed: ${msg}`, 10000);
+					} finally {
+						button.setButtonText("Test Connection");
+						button.setDisabled(false);
+					}
+				});
+			});
+
 		// Model selection
 		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gpt") {
 			new Setting(containerEl)
 				.setName("GPT model")
 				.setDesc("Select which GPT model to use")
 				.addDropdown((dropdown) => {
-					const dropdownEl = dropdown
-						.addOption("gpt-3.5-turbo", "GPT-3.5 Turbo")
-						.addOption("gpt-4", "GPT-4")
-						.addOption("gpt-4-turbo", "GPT-4 Turbo")
-						.addOption("gpt-4o", "GPT-4o")
-						.addOption("gpt-4o-mini", "GPT-4o Mini")
-						.addOption("gpt-5", "GPT-5")
-						.addOption("gpt-5-mini", "GPT-5 Mini")
-						.addOption("gpt-4.1", "GPT-4.1")
-						.addOption("gpt-4.1-mini", "GPT-4.1 Mini")
-						.addOption("gpt-4.1-nano", "GPT-4.1 Nano")
+					const dropdownEl = dropdown;
+					OPENAI_MODELS.forEach((model: { id: string; name: string }) => {
+						dropdownEl.addOption(model.id, model.name);
+					});
+
+					dropdownEl
 						.setValue(this.plugin.settings.model)
 						.onChange(async (value) => {
 							this.plugin.settings.model = value;
@@ -2029,17 +2194,12 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				.setName("Gemini model")
 				.setDesc("Select which Gemini model to use")
 				.addDropdown((dropdown) => {
-					const dropdownEl = dropdown
-						.addOption("gemini-pro", "Gemini Pro")
-						.addOption("gemini-1.5-pro", "Gemini 1.5 Pro")
-						.addOption("gemini-2.0-flash", "Gemini 2.0 Flash")
-						.addOption("gemini-2.5-flash", "Gemini 2.5 Flash")
-						.addOption("gemini-2.5-pro", "Gemini 2.5 Pro")
-						.addOption("gemini-3-pro-preview", "Gemini 3.0 Pro (Preview)")
-						.addOption(
-							"gemini-2.5-pro-preview-03-25",
-							"Gemini 2.5 Pro Preview 03-25"
-						)
+					const dropdownEl = dropdown;
+					GEMINI_MODELS.forEach((model: { id: string; name: string }) => {
+						dropdownEl.addOption(model.id, model.name);
+					});
+
+					dropdownEl
 						.setValue(this.plugin.settings.model)
 						.onChange(async (value) => {
 							this.plugin.settings.model = value;
