@@ -14,17 +14,17 @@ Query your Obsidian vault using AI, get contextual answers with proper citations
 
 ## Features
 
--   Ask questions about your vault's content and get AI-generated answers
--   Create comprehensive notes on any topic with optional vault context integration
--   Toggle between Query mode and Create mode with a simple dropdown
--   Choose whether to include vault content in your prompts
--   Results include citations and links back to your original notes
--   Copy results as text or markdown with one click
--   Create new notes from responses with AI-generated titles
--   Support for OpenAI GPT and Google Gemini models
--   Support for local LLM (LM Studio)
--   Configure which files and folders to include or exclude from scanning
--   Highlight and copy results easily
+- Ask questions about your vault's content and get AI-generated answers
+- Create comprehensive notes on any topic with optional vault context integration
+- Toggle between Query mode and Create mode with a simple dropdown
+- Choose whether to include vault content in your prompts
+- Results include citations and links back to your original notes
+- Copy results as text or markdown with one click
+- Create new notes from responses with AI-generated titles
+- Support for OpenAI GPT and Google Gemini models
+- Support for local LLM (LM Studio and Ollama)
+- Configure which files and folders to include or exclude from scanning
+- Highlight and copy results easily
 
 For a detailed list of changes between versions, see the [Changelog](CHANGELOG.md).
 
@@ -71,37 +71,37 @@ npm install
 
 ### Modes
 
--   **Query Mode**: Ask questions about your vault's content and get AI-generated answers
--   **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
+- **Query Mode**: Ask questions about your vault's content and get AI-generated answers
+- **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
 
 ### Response Actions
 
 After receiving a response, you can:
 
--   **Highlight and copy text**: Select text normally as the response is fully selectable
--   **Copy Text**: Click the "Copy Text" button to copy the response as plain text
--   **Copy Markdown**: Click the "Copy Markdown" button to copy the response with markdown formatting
--   **Create Note**: Click the "Create Note" button to save the response as a new note in your vault
+- **Highlight and copy text**: Select text normally as the response is fully selectable
+- **Copy Text**: Click the "Copy Text" button to copy the response as plain text
+- **Copy Markdown**: Click the "Copy Markdown" button to copy the response with markdown formatting
+- **Create Note**: Click the "Create Note" button to save the response as a new note in your vault
 
 ### Configuration Options
 
 Access plugin settings via Settings → Community Plugins → Vault LLM Assistant:
 
--   **LLM Provider**: Choose between OpenAI GPT and Google Gemini
--   **API Key**: Enter your API key for the selected provider
--   **Model**: Select which AI model to use
--   **Max Tokens & Temperature**: Control response length and creativity
--   **Use Vault Content in Prompts**: Toggle whether to include vault content in AI prompts
--   **Mode**: Select the current mode (Query or Create)
--   **Default Folder for New Notes**: Set where new notes will be saved
--   **Generate Note Titles with LLM**: Toggle whether to use AI for generating note titles
--   **Include/Exclude Folders**: Specify which folders to include or exclude from scanning
+- **LLM Provider**: Choose between OpenAI GPT and Google Gemini
+- **API Key**: Enter your API key for the selected provider
+- **Model**: Select which AI model to use
+- **Max Tokens & Temperature**: Control response length and creativity
+- **Use Vault Content in Prompts**: Toggle whether to include vault content in AI prompts
+- **Mode**: Select the current mode (Query or Create)
+- **Default Folder for New Notes**: Set where new notes will be saved
+- **Generate Note Titles with LLM**: Toggle whether to use AI for generating note titles
+- **Include/Exclude Folders**: Specify which folders to include or exclude from scanning
 
 ## API Keys
 
--   **OpenAI**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
--   **Google Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat)
--   **Local LLM (LM Studio)**
+- **OpenAI**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Google Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat)
+- **Local LLM**: Connects to your local instance of LM Studio or Ollama
 
 ## Local Development
 
@@ -136,8 +136,8 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Credits
 
--   Developed by [Brians Tjipto](https://github.com/brianstm)
--   Website: [brianstjipto.xyz](https://www.brianstjipto.xyz/)
+- Developed by [Brians Tjipto](https://github.com/brianstm)
+- Website: [brianstjipto.xyz](https://www.brianstjipto.xyz/)
 
 ---
 
