@@ -26,6 +26,7 @@ import { MarkdownRenderer } from "obsidian";
 const models = require("./models");
 const OPENAI_MODELS = models.OPENAI_MODELS;
 const GEMINI_MODELS = models.GEMINI_MODELS;
+const CLAUDE_MODELS = models.CLAUDE_MODELS;
 
 /**
  * Plugin Settings Interface
@@ -34,6 +35,7 @@ const GEMINI_MODELS = models.GEMINI_MODELS;
 interface VaultLLMAssistantSettings {
 	encryptedOpenAIApiKey: string;
 	encryptedGeminiApiKey: string;
+	encryptedClaudeApiKey: string;
 	apiEndpoint: string;
 	modelProvider: string;
 	model: string;
@@ -51,6 +53,7 @@ interface VaultLLMAssistantSettings {
 	newNoteFolder: string;
 	generateTitlesWithLLM: boolean;
 	useVaultContent: boolean;
+	includeImages: boolean;
 	mode: "query" | "create";
 }
 
@@ -60,6 +63,7 @@ interface VaultLLMAssistantSettings {
 const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	encryptedOpenAIApiKey: "",
 	encryptedGeminiApiKey: "",
+	encryptedClaudeApiKey: "",
 	apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models",
 	modelProvider: "gemini",
 	model: "gemini-3-pro-preview",
@@ -77,6 +81,7 @@ const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	newNoteFolder: "",
 	generateTitlesWithLLM: true,
 	useVaultContent: true,
+	includeImages: false,
 	mode: "query",
 };
 
@@ -85,6 +90,7 @@ export default class VaultLLMAssistant extends Plugin {
 	statusBarItem: HTMLElement;
 	openAIApiKey: string = "";
 	geminiApiKey: string = "";
+	claudeApiKey: string = "";
 
 	async onload() {
 		await this.loadSettings();
@@ -151,6 +157,12 @@ export default class VaultLLMAssistant extends Plugin {
 		if (this.settings.encryptedGeminiApiKey) {
 			this.geminiApiKey = this.decryptApiKey(
 				this.settings.encryptedGeminiApiKey
+			);
+		}
+
+		if (this.settings.encryptedClaudeApiKey) {
+			this.claudeApiKey = this.decryptApiKey(
+				this.settings.encryptedClaudeApiKey
 			);
 		}
 
@@ -284,6 +296,64 @@ export default class VaultLLMAssistant extends Plugin {
 	}
 
 	/**
+	 * Extracts image files linked in the Markdown content and returns their base64 representations
+	 */
+	async extractImagesFromContent(content: string, sourcePath: string): Promise<Array<{ mimeType: string, data: string, filename: string }>> {
+		const images: Array<{ mimeType: string, data: string, filename: string }> = [];
+		if (!this.settings.includeImages) return images;
+
+		const wikiLinkRegex = /!\[\[([^\]]+)\]\]/g;
+		const mdLinkRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+
+		const imagePaths = new Set<string>();
+
+		let match;
+		while ((match = wikiLinkRegex.exec(content)) !== null) {
+			imagePaths.add(match[1].trim());
+		}
+		while ((match = mdLinkRegex.exec(content)) !== null) {
+			imagePaths.add(match[1].trim());
+		}
+
+		let extractedCount = 0;
+		for (const path of Array.from(imagePaths)) {
+			if (extractedCount >= 5) break;
+
+			const cleanPath = path.split('|')[0];
+			const file = this.app.metadataCache.getFirstLinkpathDest(cleanPath, sourcePath);
+
+			if (file instanceof TFile && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(file.extension.toLowerCase())) {
+				try {
+					const buffer = await this.app.vault.readBinary(file);
+					let binary = '';
+					const bytes = new Uint8Array(buffer);
+					const len = bytes.byteLength;
+					for (let i = 0; i < len; i++) {
+						binary += String.fromCharCode(bytes[i]);
+					}
+					const base64 = window.btoa(binary);
+
+					let mimeType = `image/${file.extension.toLowerCase()}`;
+					if (file.extension.toLowerCase() === 'jpg') {
+						mimeType = 'image/jpeg';
+					}
+
+					images.push({
+						mimeType: mimeType,
+						data: base64,
+						filename: file.name
+					});
+					extractedCount++;
+				} catch (e) {
+					console.error(`Failed to read image file: ${file.path}`, e);
+				}
+			}
+		}
+
+		return images;
+	}
+
+	/**
 	 * Main method to query the configured LLM with vault content
 	 * Builds different prompts based on the current mode (query or create) and whether vault content is used
 	 *
@@ -353,15 +423,19 @@ Topic to create a note about: ${query}`;
 
 			let response: string;
 
+			const extractedImages = await this.extractImagesFromContent(vaultContent, currentFilePath || "");
+
 			if (this.settings.useLocalLLM) {
 				response = await this.queryLMStudio(prompt);
 			} else if (this.settings.useOllama) {
 				response = await this.queryOllama(prompt);
 			} else {
 				if (this.settings.modelProvider === "gpt") {
-					response = await this.queryGPT(prompt);
+					response = await this.queryGPT(prompt, extractedImages);
 				} else if (this.settings.modelProvider === "gemini") {
-					response = await this.queryGemini(prompt);
+					response = await this.queryGemini(prompt, extractedImages);
+				} else if (this.settings.modelProvider === "claude") {
+					response = await this.queryClaude(prompt, extractedImages);
 				} else {
 					throw new Error("Unknown model provider");
 				}
@@ -382,9 +456,10 @@ Topic to create a note about: ${query}`;
 	 * Queries OpenAI's API with the prepared prompt
 	 *
 	 * @param prompt - Formatted prompt with system instructions and context
+	 * @param images - Array of base64 images to include in the prompt
 	 * @returns The model's response or a formatted error message
 	 */
-	async queryGPT(prompt: string): Promise<string> {
+	async queryGPT(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.settings.model);
@@ -396,6 +471,14 @@ Topic to create a note about: ${query}`;
 
 			const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
 
+			const userContent = images.length > 0 ? [
+				{ type: "text", text: prompt },
+				...images.map(img => ({
+					type: "image_url",
+					image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+				}))
+			] : prompt;
+
 			if (endpoint === "/v1/responses") {
 				body.input = [
 					{
@@ -405,11 +488,10 @@ Topic to create a note about: ${query}`;
 					},
 					{
 						role: "user",
-						content: prompt,
+						content: userContent,
 					},
 				];
 			} else if (endpoint === "/v1/completions") {
-				body.prompt = prompt;
 				body.prompt = "System: You are an expert assistant. Answer concisely.\nUser: " + prompt + "\nAssistant:";
 			} else {
 				body.messages = [
@@ -420,7 +502,7 @@ Topic to create a note about: ${query}`;
 					},
 					{
 						role: "user",
-						content: prompt,
+						content: userContent,
 					},
 				];
 			}
@@ -509,10 +591,21 @@ Topic to create a note about: ${query}`;
 	 * Queries Google's Gemini API with the prepared prompt
 	 *
 	 * @param prompt - Formatted prompt with context
+	 * @param images - Array of base64 images to include in the prompt
 	 * @returns The model's response
 	 */
-	async queryGemini(prompt: string): Promise<string> {
+	async queryGemini(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
 		try {
+			const parts = [
+				{ text: prompt },
+				...images.map(img => ({
+					inlineData: {
+						mimeType: img.mimeType,
+						data: img.data
+					}
+				}))
+			];
+
 			const response = await requestUrl({
 				url: `https://generativelanguage.googleapis.com/v1beta/models/${this.settings.model
 					}:generateContent?key=${this.getApiKey()}`,
@@ -523,7 +616,7 @@ Topic to create a note about: ${query}`;
 				body: JSON.stringify({
 					contents: [
 						{
-							parts: [{ text: prompt }],
+							parts: parts,
 						},
 					],
 					generationConfig: {
@@ -594,6 +687,113 @@ Topic to create a note about: ${query}`;
 					default:
 						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"
 							}`;
+				}
+			} else if (error.message) {
+				errorMessage += error.message;
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
+		}
+	}
+
+	/**
+	 * Queries Anthropic's Claude API with the prepared prompt
+	 *
+	 * @param prompt - Formatted prompt with context
+	 * @param images - Array of base64 images to include in the prompt
+	 * @returns The model's response
+	 */
+	async queryClaude(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
+		try {
+			const userContent = images.length > 0 ? [
+				{ type: "text", text: prompt },
+				...images.map(img => ({
+					type: "image",
+					source: {
+						type: "base64",
+						media_type: img.mimeType,
+						data: img.data
+					}
+				}))
+			] : prompt;
+
+			const response = await requestUrl({
+				url: "https://api.anthropic.com/v1/messages",
+				method: "POST",
+				headers: {
+					"x-api-key": this.getApiKey(),
+					"anthropic-version": "2023-06-01",
+					"anthropic-dangerously-allow-browser": "true",
+					"content-type": "application/json"
+				},
+				body: JSON.stringify({
+					model: this.settings.model,
+					max_tokens: this.settings.maxTokens,
+					temperature: this.settings.temperature,
+					messages: [
+						{
+							role: "user",
+							content: userContent
+						}
+					]
+				})
+			});
+
+			const jsonResponse = response.json;
+			if (jsonResponse.content && jsonResponse.content.length > 0) {
+				return jsonResponse.content[0].text;
+			}
+
+			if (jsonResponse.error) {
+				return `Claude API Error: ${jsonResponse.error.message || "Unknown error"}`;
+			}
+
+			return "No response generated.";
+
+		} catch (error) {
+			console.error("Error querying Claude:", error);
+
+			let errorMessage = "Error querying Claude: ";
+
+			if (error.text) {
+				try {
+					const errorBody = await error.text();
+					const parsedBody = JSON.parse(errorBody);
+					if (parsedBody.error && parsedBody.error.message) {
+						errorMessage += `Server message: ${parsedBody.error.message}`;
+						return errorMessage;
+					}
+				} catch (e) {
+				}
+			}
+
+			if (error.status) {
+				switch (error.status) {
+					case 400:
+						errorMessage += "Bad request. Check your model name and request format.";
+						break;
+					case 401:
+						errorMessage += "Authentication error. Please check your API key.";
+						break;
+					case 403:
+						errorMessage += "Permission denied. Your API key may not have access to this model.";
+						break;
+					case 404:
+						errorMessage += "The specified model was not found. It might be deprecated or unavailable.";
+						break;
+					case 429:
+						errorMessage += "Rate limit exceeded or quota exceeded. Please check your Anthropic plan and limits.";
+						break;
+					case 500:
+					case 502:
+					case 503:
+					case 504:
+						errorMessage += "Anthropic server error. Please try again later.";
+						break;
+					default:
+						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"}`;
 				}
 			} else if (error.message) {
 				errorMessage += error.message;
@@ -977,6 +1177,8 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 			return this.openAIApiKey;
 		} else if (this.settings.modelProvider === "gemini") {
 			return this.geminiApiKey;
+		} else if (this.settings.modelProvider === "claude") {
+			return this.claudeApiKey;
 		}
 		return "";
 	}
@@ -991,6 +1193,9 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 		} else if (provider === "gemini") {
 			this.geminiApiKey = apiKey;
 			this.settings.encryptedGeminiApiKey = this.encryptApiKey(apiKey);
+		} else if (provider === "claude") {
+			this.claudeApiKey = apiKey;
+			this.settings.encryptedClaudeApiKey = this.encryptApiKey(apiKey);
 		}
 		await this.saveSettings();
 	}
@@ -1007,6 +1212,13 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	 */
 	getGeminiApiKey(): string {
 		return this.geminiApiKey;
+	}
+
+	/**
+	 * Gets the Claude API key
+	 */
+	getClaudeApiKey(): string {
+		return this.claudeApiKey;
 	}
 }
 
@@ -1372,6 +1584,28 @@ class VaultLLMAssistantView extends View {
 		useVaultContentCheckbox.addEventListener("change", async (e) => {
 			this.plugin.settings.useVaultContent =
 				useVaultContentCheckbox.checked;
+			await this.plugin.saveSettings();
+		});
+
+		const includeImagesToggle = optionsContainer.createDiv({
+			cls: "vault-llm-option-toggle",
+		});
+
+		const includeImagesCheckbox = includeImagesToggle.createEl("input", {
+			attr: {
+				type: "checkbox",
+				id: "include-images",
+			},
+		});
+		includeImagesCheckbox.checked = this.plugin.settings.includeImages;
+
+		includeImagesToggle.createEl("label", {
+			text: "Include images",
+			attr: { for: "include-images" },
+		});
+
+		includeImagesCheckbox.addEventListener("change", async (e) => {
+			this.plugin.settings.includeImages = includeImagesCheckbox.checked;
 			await this.plugin.saveSettings();
 		});
 
@@ -1901,6 +2135,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 	plugin: VaultLLMAssistant;
 	openAIApiKeyVisible: boolean = false;
 	geminiApiKeyVisible: boolean = false;
+	claudeApiKeyVisible: boolean = false;
 
 	constructor(app: App, plugin: VaultLLMAssistant) {
 		super(app, plugin);
@@ -1952,6 +2187,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					const dropdownEl = dropdown
 						.addOption("gpt", "OpenAI GPT")
 						.addOption("gemini", "Google Gemini")
+						.addOption("claude", "Anthropic Claude")
 						.setValue(this.plugin.settings.modelProvider)
 						.onChange(async (value) => {
 							this.plugin.settings.modelProvider = value;
@@ -1969,6 +2205,14 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 									!this.plugin.settings.model.startsWith("gemini")
 								) {
 									this.plugin.settings.model = "gemini-3-pro-preview";
+								}
+							} else if (value === "claude") {
+								this.plugin.settings.apiEndpoint =
+									"https://api.anthropic.com/v1/messages";
+								if (
+									!this.plugin.settings.model.startsWith("claude")
+								) {
+									this.plugin.settings.model = "claude-3-5-sonnet-20241022";
 								}
 							}
 
@@ -2128,6 +2372,52 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		}
 
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "claude") {
+			const claudeApiKeySetting = new Setting(containerEl)
+				.setName("Claude API key")
+				.setDesc("Enter your Anthropic Claude API key (Required)");
+
+			const claudeApiKeyContainer = createDiv({
+				cls: "vault-llm-apikey-container",
+			});
+			claudeApiKeySetting.controlEl.appendChild(claudeApiKeyContainer);
+
+			const claudeApiKeyInput = new TextComponent(claudeApiKeyContainer);
+			claudeApiKeyInput
+				.setPlaceholder("Enter your Claude API key")
+				.setValue(
+					this.claudeApiKeyVisible
+						? this.plugin.getClaudeApiKey()
+						: "••••••••••••••••••••••••••"
+				)
+				.onChange(async (value: string) => {
+					await this.plugin.setApiKey(value, "claude");
+				});
+			claudeApiKeyInput.inputEl.type = this.claudeApiKeyVisible
+				? "text"
+				: "password";
+			claudeApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+
+			const claudeToggleButton = claudeApiKeyContainer.createEl("button", {
+				cls: "vault-llm-visibility-toggle",
+				text: this.claudeApiKeyVisible ? "Hide" : "Show",
+			});
+			claudeToggleButton.addEventListener("click", () => {
+				this.claudeApiKeyVisible = !this.claudeApiKeyVisible;
+				claudeApiKeyInput.inputEl.type = this.claudeApiKeyVisible
+					? "text"
+					: "password";
+				claudeApiKeyInput.setValue(
+					this.claudeApiKeyVisible
+						? this.plugin.getClaudeApiKey()
+						: "••••••••••••••••••••••••••"
+				);
+				claudeToggleButton.textContent = this.claudeApiKeyVisible
+					? "Hide"
+					: "Show";
+			});
+		}
+
 		const testConnectionSetting = new Setting(containerEl)
 			.setName("Test Connection")
 			.setDesc("Verify that your API key and selected model are working correctly")
@@ -2224,6 +2514,30 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 							if (response.status === 200) {
 								result = "Success";
 							}
+						} else if (this.plugin.settings.modelProvider === "claude") {
+							const response = await requestUrl({
+								url: "https://api.anthropic.com/v1/messages",
+								method: "POST",
+								headers: {
+									"x-api-key": this.plugin.getApiKey(),
+									"anthropic-version": "2023-06-01",
+									"anthropic-dangerously-allow-browser": "true",
+									"content-type": "application/json"
+								},
+								body: JSON.stringify({
+									model: this.plugin.settings.model,
+									max_tokens: 1,
+									messages: [{ role: "user", content: "Hi" }]
+								}),
+							});
+							if (response.status === 200 && !response.json.error) {
+								result = "Success";
+							} else if (response.json.error) {
+								throw new Error(
+									response.json.error.message ||
+									"Unknown Claude error"
+								);
+							}
 						} else {
 							const response = await requestUrl({
 								url: `https://generativelanguage.googleapis.com/v1beta/models/${this.plugin.settings.model
@@ -2309,6 +2623,25 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				.addDropdown((dropdown) => {
 					const dropdownEl = dropdown;
 					GEMINI_MODELS.forEach((model: { id: string; name: string }) => {
+						dropdownEl.addOption(model.id, model.name);
+					});
+
+					dropdownEl
+						.setValue(this.plugin.settings.model)
+						.onChange(async (value) => {
+							this.plugin.settings.model = value;
+							await this.plugin.saveSettings();
+						});
+					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
+					return dropdown;
+				});
+		} else if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "claude") {
+			new Setting(containerEl)
+				.setName("Claude model")
+				.setDesc("Select which Claude model to use")
+				.addDropdown((dropdown) => {
+					const dropdownEl = dropdown;
+					CLAUDE_MODELS.forEach((model: { id: string; name: string }) => {
 						dropdownEl.addOption(model.id, model.name);
 					});
 

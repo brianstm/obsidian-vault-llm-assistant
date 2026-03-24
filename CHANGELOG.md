@@ -2,6 +2,17 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.0.10 - 2026-03-24
+
+### New Features
+
+- Added support for Anthropic Claude models via direct API integration
+- Added visual option to include markdown images (Vault images) in requests to OpenAI, Gemini, and Claude vision-capable models
+
+### Improvements
+
+- Updated predefined model list to include Claude 3 and Claude 3.5 series
+
 ## 1.0.9 - 2026-02-21
 
 ### New Features
