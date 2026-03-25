@@ -1,7 +1,14 @@
 const OPENAI_MODELS = [
-    // GPT-5 Series (Hypothetical)
+    // GPT-5.4 Series (Latest - March 2026)
+    { id: "gpt-5.4", name: "GPT-5.4", useMaxCompletionTokens: true },
+    { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", useMaxCompletionTokens: true },
+    { id: "gpt-5.4-nano", name: "GPT-5.4 Nano", useMaxCompletionTokens: true },
+
+    // GPT-5.2 Series
     { id: "gpt-5.2-pro", name: "GPT-5.2 Pro", endpoint: "/v1/responses" },
     { id: "gpt-5.2", name: "GPT-5.2", useMaxCompletionTokens: true },
+
+    // GPT-5 Series
     { id: "gpt-5.1", name: "GPT-5.1", useMaxCompletionTokens: true },
     { id: "gpt-5-pro", name: "GPT-5 Pro", endpoint: "/v1/responses" },
     { id: "gpt-5", name: "GPT-5", useMaxCompletionTokens: true },
@@ -11,6 +18,7 @@ const OPENAI_MODELS = [
     // Reasoning Series (o-series)
     { id: "o1-pro", name: "o1 Pro", endpoint: "/v1/responses" },
     { id: "o1", name: "o1", useMaxCompletionTokens: true },
+    { id: "o3-pro", name: "o3 Pro", endpoint: "/v1/responses" },
     { id: "o3", name: "o3", useMaxCompletionTokens: true },
     { id: "o3-mini", name: "o3 Mini", useMaxCompletionTokens: true },
     { id: "o4-mini", name: "o4 Mini", useMaxCompletionTokens: true },
@@ -24,7 +32,7 @@ const OPENAI_MODELS = [
     { id: "gpt-4o", name: "GPT-4o" },
     { id: "gpt-4o-mini", name: "GPT-4o Mini" },
 
-    // GPT-4 Legacy
+    // GPT-4 Legacy (Deprecated - redirects to gpt-4.1 after Mar 26, 2026)
     { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
     { id: "gpt-4", name: "GPT-4" },
 
@@ -34,8 +42,11 @@ const OPENAI_MODELS = [
 ];
 
 const GEMINI_MODELS = [
+    // Gemini 3.1 Series (Latest - 2026)
+    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Preview)" },
+    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash-Lite (Preview)" },
+
     // Gemini 3.0 Series (Preview)
-    { id: "gemini-3-pro-preview", name: "Gemini 3.0 Pro (Preview)" },
     { id: "gemini-3-flash-preview", name: "Gemini 3.0 Flash (Preview)" },
 
     // Gemini 2.5 Series
@@ -43,7 +54,7 @@ const GEMINI_MODELS = [
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
 
-    // Gemini 2.0 Series
+    // Gemini 2.0 Series (Deprecated - existing customers only since Mar 6, 2026)
     { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
     { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite" },
 
