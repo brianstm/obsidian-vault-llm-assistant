@@ -22,11 +22,11 @@ import {
 } from "obsidian";
 import { MarkdownRenderer } from "obsidian";
 
-// Import models from external file
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const models = require("./models");
 const OPENAI_MODELS = models.OPENAI_MODELS;
 const GEMINI_MODELS = models.GEMINI_MODELS;
+const CLAUDE_MODELS = models.CLAUDE_MODELS;
 
 /**
  * Plugin Settings Interface
@@ -35,12 +35,16 @@ const GEMINI_MODELS = models.GEMINI_MODELS;
 interface VaultLLMAssistantSettings {
 	encryptedOpenAIApiKey: string;
 	encryptedGeminiApiKey: string;
+	encryptedClaudeApiKey: string;
 	apiEndpoint: string;
 	modelProvider: string;
 	model: string;
 	lmStudioApiUrl: string;
 	lmStudioModel: string;
 	useLocalLLM: boolean;
+	useOllama: boolean;
+	ollamaUrl: string;
+	ollamaModel: string;
 	maxTokens: number;
 	temperature: number;
 	includeCurrentFileOnly: boolean;
@@ -49,6 +53,7 @@ interface VaultLLMAssistantSettings {
 	newNoteFolder: string;
 	generateTitlesWithLLM: boolean;
 	useVaultContent: boolean;
+	includeImages: boolean;
 	mode: "query" | "create";
 }
 
@@ -58,12 +63,16 @@ interface VaultLLMAssistantSettings {
 const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	encryptedOpenAIApiKey: "",
 	encryptedGeminiApiKey: "",
+	encryptedClaudeApiKey: "",
 	apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/models",
 	modelProvider: "gemini",
 	model: "gemini-3-pro-preview",
 	lmStudioApiUrl: "http://localhost:1234/v1",
 	lmStudioModel: "local-model",
 	useLocalLLM: false,
+	useOllama: false,
+	ollamaUrl: "http://localhost:11434",
+	ollamaModel: "llama3",
 	maxTokens: 2000,
 	temperature: 0.7,
 	includeCurrentFileOnly: false,
@@ -72,6 +81,7 @@ const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	newNoteFolder: "",
 	generateTitlesWithLLM: true,
 	useVaultContent: true,
+	includeImages: false,
 	mode: "query",
 };
 
@@ -80,6 +90,7 @@ export default class VaultLLMAssistant extends Plugin {
 	statusBarItem: HTMLElement;
 	openAIApiKey: string = "";
 	geminiApiKey: string = "";
+	claudeApiKey: string = "";
 
 	async onload() {
 		await this.loadSettings();
@@ -125,7 +136,6 @@ export default class VaultLLMAssistant extends Plugin {
 	 * Cleanup when plugin is disabled
 	 */
 	onunload() {
-		// Obsidian will handle leaf cleanup
 	}
 
 	/**
@@ -138,7 +148,6 @@ export default class VaultLLMAssistant extends Plugin {
 			await this.loadData()
 		);
 
-		// Load encrypted API keys
 		if (this.settings.encryptedOpenAIApiKey) {
 			this.openAIApiKey = this.decryptApiKey(
 				this.settings.encryptedOpenAIApiKey
@@ -151,7 +160,12 @@ export default class VaultLLMAssistant extends Plugin {
 			);
 		}
 
-		// Handle legacy API key format
+		if (this.settings.encryptedClaudeApiKey) {
+			this.claudeApiKey = this.decryptApiKey(
+				this.settings.encryptedClaudeApiKey
+			);
+		}
+
 		if (
 			this.settings.hasOwnProperty("encryptedApiKey") &&
 			(this.settings as any).encryptedApiKey
@@ -175,9 +189,7 @@ export default class VaultLLMAssistant extends Plugin {
 			}
 		}
 
-		// Remove any plaintext API key that might still be in the settings
 		if ((this.settings as any).apiKey) {
-			// Migrate plaintext key to encrypted format
 			if (!this.openAIApiKey && !this.geminiApiKey) {
 				const apiKey = (this.settings as any).apiKey;
 				if (this.settings.modelProvider === "gpt") {
@@ -284,6 +296,64 @@ export default class VaultLLMAssistant extends Plugin {
 	}
 
 	/**
+	 * Extracts image files linked in the Markdown content and returns their base64 representations
+	 */
+	async extractImagesFromContent(content: string, sourcePath: string): Promise<Array<{ mimeType: string, data: string, filename: string }>> {
+		const images: Array<{ mimeType: string, data: string, filename: string }> = [];
+		if (!this.settings.includeImages) return images;
+
+		const wikiLinkRegex = /!\[\[([^\]]+)\]\]/g;
+		const mdLinkRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+
+		const imagePaths = new Set<string>();
+
+		let match;
+		while ((match = wikiLinkRegex.exec(content)) !== null) {
+			imagePaths.add(match[1].trim());
+		}
+		while ((match = mdLinkRegex.exec(content)) !== null) {
+			imagePaths.add(match[1].trim());
+		}
+
+		let extractedCount = 0;
+		for (const path of Array.from(imagePaths)) {
+			if (extractedCount >= 5) break;
+
+			const cleanPath = path.split('|')[0];
+			const file = this.app.metadataCache.getFirstLinkpathDest(cleanPath, sourcePath);
+
+			if (file instanceof TFile && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(file.extension.toLowerCase())) {
+				try {
+					const buffer = await this.app.vault.readBinary(file);
+					let binary = '';
+					const bytes = new Uint8Array(buffer);
+					const len = bytes.byteLength;
+					for (let i = 0; i < len; i++) {
+						binary += String.fromCharCode(bytes[i]);
+					}
+					const base64 = window.btoa(binary);
+
+					let mimeType = `image/${file.extension.toLowerCase()}`;
+					if (file.extension.toLowerCase() === 'jpg') {
+						mimeType = 'image/jpeg';
+					}
+
+					images.push({
+						mimeType: mimeType,
+						data: base64,
+						filename: file.name
+					});
+					extractedCount++;
+				} catch (e) {
+					console.error(`Failed to read image file: ${file.path}`, e);
+				}
+			}
+		}
+
+		return images;
+	}
+
+	/**
 	 * Main method to query the configured LLM with vault content
 	 * Builds different prompts based on the current mode (query or create) and whether vault content is used
 	 *
@@ -353,13 +423,19 @@ Topic to create a note about: ${query}`;
 
 			let response: string;
 
+			const extractedImages = await this.extractImagesFromContent(vaultContent, currentFilePath || "");
+
 			if (this.settings.useLocalLLM) {
 				response = await this.queryLMStudio(prompt);
+			} else if (this.settings.useOllama) {
+				response = await this.queryOllama(prompt);
 			} else {
 				if (this.settings.modelProvider === "gpt") {
-					response = await this.queryGPT(prompt);
+					response = await this.queryGPT(prompt, extractedImages);
 				} else if (this.settings.modelProvider === "gemini") {
-					response = await this.queryGemini(prompt);
+					response = await this.queryGemini(prompt, extractedImages);
+				} else if (this.settings.modelProvider === "claude") {
+					response = await this.queryClaude(prompt, extractedImages);
 				} else {
 					throw new Error("Unknown model provider");
 				}
@@ -380,58 +456,64 @@ Topic to create a note about: ${query}`;
 	 * Queries OpenAI's API with the prepared prompt
 	 *
 	 * @param prompt - Formatted prompt with system instructions and context
+	 * @param images - Array of base64 images to include in the prompt
 	 * @returns The model's response or a formatted error message
 	 */
-	async queryGPT(prompt: string): Promise<string> {
+	async queryGPT(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
 		try {
-            // Find model config
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.settings.model);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.settings.model);
 
-            const body: any = {
-                model: this.settings.model,
-                temperature: this.settings.temperature,
-            };
+			const body: any = {
+				model: this.settings.model,
+				temperature: this.settings.temperature,
+			};
 
-            const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
+			const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
 
-            if (endpoint === "/v1/responses") {
-                 body.input = [
-                    {
-                        role: "system",
-                        content:
-                            "You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
-                    },
-                    {
-                        role: "user",
-                        content: prompt,
-                    },
-                ];
-            } else if (endpoint === "/v1/completions") {
-                body.prompt = prompt;
-                 // Add system prompt to context for completion models roughly
-                body.prompt = "System: You are an expert assistant. Answer concisely.\nUser: " + prompt + "\nAssistant:";
-            } else {
-                 body.messages = [
-                    {
-                        role: "system",
-                        content:
-                            "You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
-                    },
-                    {
-                        role: "user",
-                        content: prompt,
-                    },
-                ];
-            }
+			const userContent = images.length > 0 ? [
+				{ type: "text", text: prompt },
+				...images.map(img => ({
+					type: "image_url",
+					image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+				}))
+			] : prompt;
 
-            if (modelConfig && modelConfig.useMaxCompletionTokens) {
-                body.max_completion_tokens = this.settings.maxTokens;
-            } else if (endpoint !== "/v1/responses") {
-                body.max_tokens = this.settings.maxTokens;
-            }
+			if (endpoint === "/v1/responses") {
+				body.input = [
+					{
+						role: "system",
+						content:
+							"You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
+					},
+					{
+						role: "user",
+						content: userContent,
+					},
+				];
+			} else if (endpoint === "/v1/completions") {
+				body.prompt = "System: You are an expert assistant. Answer concisely.\nUser: " + prompt + "\nAssistant:";
+			} else {
+				body.messages = [
+					{
+						role: "system",
+						content:
+							"You are an expert assistant. Answer responsibly, concisely, and precisely. Always cite sources using [[Filename]].",
+					},
+					{
+						role: "user",
+						content: userContent,
+					},
+				];
+			}
 
-            const url = `https://api.openai.com${endpoint}`;
+			if (modelConfig && modelConfig.useMaxCompletionTokens) {
+				body.max_completion_tokens = this.settings.maxTokens;
+			} else if (endpoint !== "/v1/responses") {
+				body.max_tokens = this.settings.maxTokens;
+			}
+
+			const url = `https://api.openai.com${endpoint}`;
 
 			const response = await requestUrl({
 				url: url,
@@ -454,7 +536,6 @@ Topic to create a note about: ${query}`;
 
 			let errorMessage = "Error querying OpenAI: ";
 
-			// Try to extract detailed error from response body if available
 			if (error.text) {
 				try {
 					const errorBody = await error.text();
@@ -464,7 +545,6 @@ Topic to create a note about: ${query}`;
 						return errorMessage;
 					}
 				} catch (e) {
-					// Failed to parse error body, continue with standard error handling
 				}
 			}
 
@@ -511,10 +591,21 @@ Topic to create a note about: ${query}`;
 	 * Queries Google's Gemini API with the prepared prompt
 	 *
 	 * @param prompt - Formatted prompt with context
+	 * @param images - Array of base64 images to include in the prompt
 	 * @returns The model's response
 	 */
-	async queryGemini(prompt: string): Promise<string> {
+	async queryGemini(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
 		try {
+			const parts = [
+				{ text: prompt },
+				...images.map(img => ({
+					inlineData: {
+						mimeType: img.mimeType,
+						data: img.data
+					}
+				}))
+			];
+
 			const response = await requestUrl({
 				url: `https://generativelanguage.googleapis.com/v1beta/models/${this.settings.model
 					}:generateContent?key=${this.getApiKey()}`,
@@ -525,7 +616,7 @@ Topic to create a note about: ${query}`;
 				body: JSON.stringify({
 					contents: [
 						{
-							parts: [{ text: prompt }],
+							parts: parts,
 						},
 					],
 					generationConfig: {
@@ -552,7 +643,6 @@ Topic to create a note about: ${query}`;
 
 			let errorMessage = "Error querying Gemini: ";
 
-			// Try to extract detailed error from response body if available
 			if (error.text) {
 				try {
 					const errorBody = await error.text();
@@ -562,7 +652,6 @@ Topic to create a note about: ${query}`;
 						return errorMessage;
 					}
 				} catch (e) {
-					// Failed to parse error body, continue with standard error handling
 				}
 			}
 
@@ -610,6 +699,113 @@ Topic to create a note about: ${query}`;
 	}
 
 	/**
+	 * Queries Anthropic's Claude API with the prepared prompt
+	 *
+	 * @param prompt - Formatted prompt with context
+	 * @param images - Array of base64 images to include in the prompt
+	 * @returns The model's response
+	 */
+	async queryClaude(prompt: string, images: Array<{ mimeType: string, data: string, filename: string }> = []): Promise<string> {
+		try {
+			const userContent = images.length > 0 ? [
+				{ type: "text", text: prompt },
+				...images.map(img => ({
+					type: "image",
+					source: {
+						type: "base64",
+						media_type: img.mimeType,
+						data: img.data
+					}
+				}))
+			] : prompt;
+
+			const response = await requestUrl({
+				url: "https://api.anthropic.com/v1/messages",
+				method: "POST",
+				headers: {
+					"x-api-key": this.getApiKey(),
+					"anthropic-version": "2023-06-01",
+					"anthropic-dangerously-allow-browser": "true",
+					"content-type": "application/json"
+				},
+				body: JSON.stringify({
+					model: this.settings.model,
+					max_tokens: this.settings.maxTokens,
+					temperature: this.settings.temperature,
+					messages: [
+						{
+							role: "user",
+							content: userContent
+						}
+					]
+				})
+			});
+
+			const jsonResponse = response.json;
+			if (jsonResponse.content && jsonResponse.content.length > 0) {
+				return jsonResponse.content[0].text;
+			}
+
+			if (jsonResponse.error) {
+				return `Claude API Error: ${jsonResponse.error.message || "Unknown error"}`;
+			}
+
+			return "No response generated.";
+
+		} catch (error) {
+			console.error("Error querying Claude:", error);
+
+			let errorMessage = "Error querying Claude: ";
+
+			if (error.text) {
+				try {
+					const errorBody = await error.text();
+					const parsedBody = JSON.parse(errorBody);
+					if (parsedBody.error && parsedBody.error.message) {
+						errorMessage += `Server message: ${parsedBody.error.message}`;
+						return errorMessage;
+					}
+				} catch (e) {
+				}
+			}
+
+			if (error.status) {
+				switch (error.status) {
+					case 400:
+						errorMessage += "Bad request. Check your model name and request format.";
+						break;
+					case 401:
+						errorMessage += "Authentication error. Please check your API key.";
+						break;
+					case 403:
+						errorMessage += "Permission denied. Your API key may not have access to this model.";
+						break;
+					case 404:
+						errorMessage += "The specified model was not found. It might be deprecated or unavailable.";
+						break;
+					case 429:
+						errorMessage += "Rate limit exceeded or quota exceeded. Please check your Anthropic plan and limits.";
+						break;
+					case 500:
+					case 502:
+					case 503:
+					case 504:
+						errorMessage += "Anthropic server error. Please try again later.";
+						break;
+					default:
+						errorMessage += `Status ${error.status}: ${error.message || "Unknown error"}`;
+				}
+			} else if (error.message) {
+				errorMessage += error.message;
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
+		}
+	}
+
+	/**
 	 * Queries LM Studio (local LLM) with the prepared prompt
 	 * Uses OpenAI-compatible API structure
 	 *
@@ -618,7 +814,6 @@ Topic to create a note about: ${query}`;
 	 */
 	async queryLMStudio(prompt: string): Promise<string> {
 		try {
-			// Ensure URL ends with /chat/completions if not present, but respect user's base URL
 			let url = this.settings.lmStudioApiUrl;
 			if (!url.endsWith("/chat/completions")) {
 				if (url.endsWith("/")) {
@@ -683,6 +878,71 @@ Topic to create a note about: ${query}`;
 			} else if (error.message) {
 				if (error.message.includes("Connection refused") || error.message.includes("Failed to fetch")) {
 					errorMessage += "Connection failed. Is LM Studio running and the server started?";
+				} else {
+					errorMessage += error.message;
+				}
+			} else {
+				errorMessage += "Unknown error occurred";
+			}
+
+			return errorMessage;
+		}
+	}
+
+	/**
+	 * Queries Ollama with the prepared prompt
+	 * Uses Ollama's /api/generate endpoint
+	 *
+	 * @param prompt - Formatted prompt with system instructions and context
+	 * @returns The model's response or a formatted error message
+	 */
+	async queryOllama(prompt: string): Promise<string> {
+		try {
+			let url = this.settings.ollamaUrl;
+			if (!url.endsWith("/api/generate")) {
+				if (url.endsWith("/")) {
+					url += "api/generate";
+				} else {
+					url += "/api/generate";
+				}
+			}
+
+			const response = await requestUrl({
+				url: url,
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					model: this.settings.ollamaModel,
+					prompt: prompt,
+					system: "You are a helpful assistant that answers questions about the user's Obsidian vault content.",
+					stream: false,
+					options: {
+						temperature: this.settings.temperature,
+						num_predict: this.settings.maxTokens,
+					},
+				}),
+			});
+
+			const jsonResponse = response.json;
+			if (jsonResponse.response) {
+				return jsonResponse.response;
+			}
+			return "No response generated.";
+		} catch (error) {
+			console.error("Error querying Ollama:", error);
+			let errorMessage = "Error querying Ollama: ";
+
+			if (error.status) {
+				if (error.status === 404) {
+					errorMessage += `Model \`${this.settings.ollamaModel}\` not found in Ollama or incorrect URL. Try running \`ollama pull ${this.settings.ollamaModel}\`.`;
+				} else {
+					errorMessage += `Status ${error.status}: ${error.message || "Unknown error"}`;
+				}
+			} else if (error.message) {
+				if (error.message.includes("Connection refused") || error.message.includes("Failed to fetch")) {
+					errorMessage += "Connection failed. Is Ollama running and the server started?";
 				} else {
 					errorMessage += error.message;
 				}
@@ -803,7 +1063,6 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 				}
 			}
 
-			// Clean up title
 			const cleanTitle = titleResponse
 				.replace(/^["']|["']$|[.:]$/g, "") // Remove quotes and trailing punctuation
 				.trim();
@@ -848,7 +1107,6 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	encryptApiKey(apiKey: string): string {
 		if (!apiKey) return "";
 
-		// Simple encryption using Base64 and character substitution
 		const deviceId = this.getDeviceId();
 		const mixed = apiKey
 			.split("")
@@ -894,12 +1152,10 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	 * This helps make the encryption tied to the device
 	 */
 	getDeviceId(): string {
-		// Using user agent and vault path to create a unique device identifier
 		const userAgentInfo = navigator.userAgent || "unknown";
 		const vaultPath = this.app.vault.getName() || "obsidian";
 		const seed = `${userAgentInfo}-${vaultPath}`;
 
-		// Create a simple hash of the seed
 		let hash = 0;
 		for (let i = 0; i < seed.length; i++) {
 			const char = seed.charCodeAt(i);
@@ -921,6 +1177,8 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 			return this.openAIApiKey;
 		} else if (this.settings.modelProvider === "gemini") {
 			return this.geminiApiKey;
+		} else if (this.settings.modelProvider === "claude") {
+			return this.claudeApiKey;
 		}
 		return "";
 	}
@@ -935,6 +1193,9 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 		} else if (provider === "gemini") {
 			this.geminiApiKey = apiKey;
 			this.settings.encryptedGeminiApiKey = this.encryptApiKey(apiKey);
+		} else if (provider === "claude") {
+			this.claudeApiKey = apiKey;
+			this.settings.encryptedClaudeApiKey = this.encryptApiKey(apiKey);
 		}
 		await this.saveSettings();
 	}
@@ -951,6 +1212,13 @@ Answer: ${response.substring(0, 500)}... (truncated for brevity)`;
 	 */
 	getGeminiApiKey(): string {
 		return this.geminiApiKey;
+	}
+
+	/**
+	 * Gets the Claude API key
+	 */
+	getClaudeApiKey(): string {
+		return this.claudeApiKey;
 	}
 }
 
@@ -1319,6 +1587,28 @@ class VaultLLMAssistantView extends View {
 			await this.plugin.saveSettings();
 		});
 
+		const includeImagesToggle = optionsContainer.createDiv({
+			cls: "vault-llm-option-toggle",
+		});
+
+		const includeImagesCheckbox = includeImagesToggle.createEl("input", {
+			attr: {
+				type: "checkbox",
+				id: "include-images",
+			},
+		});
+		includeImagesCheckbox.checked = this.plugin.settings.includeImages;
+
+		includeImagesToggle.createEl("label", {
+			text: "Include images",
+			attr: { for: "include-images" },
+		});
+
+		includeImagesCheckbox.addEventListener("change", async (e) => {
+			this.plugin.settings.includeImages = includeImagesCheckbox.checked;
+			await this.plugin.saveSettings();
+		});
+
 		const buttonContainer = inputContainer.createDiv({
 			cls: "vault-llm-button-container",
 		});
@@ -1393,10 +1683,16 @@ class VaultLLMAssistantView extends View {
 				queryEl.createSpan({ text: query });
 			}
 
-			// Add model indicator
+			let displayModel = this.plugin.settings.model;
+			if (this.plugin.settings.useLocalLLM) {
+				displayModel = this.plugin.settings.lmStudioModel;
+			} else if (this.plugin.settings.useOllama) {
+				displayModel = this.plugin.settings.ollamaModel;
+			}
+
 			queryEl.createSpan({
 				cls: "vault-llm-model-badge",
-				text: this.plugin.settings.model,
+				text: displayModel,
 			});
 
 			if (
@@ -1684,7 +1980,6 @@ class VaultLLMAssistantView extends View {
 	 * Returns view data for Obsidian serialization
 	 */
 	getViewData(): string {
-		// Not needed for this implementation
 		return "";
 	}
 
@@ -1692,7 +1987,6 @@ class VaultLLMAssistantView extends View {
 	 * Sets view data from Obsidian serialization
 	 */
 	setViewData(data: string, clear: boolean): void {
-		// Not needed for this implementation
 	}
 
 	/**
@@ -1702,23 +1996,19 @@ class VaultLLMAssistantView extends View {
 	 * @param element - HTML element containing the response
 	 */
 	processLinks(element: HTMLElement) {
-		// First process paragraphs to find and convert wiki-style links
 		this.processWikiStyleLinks(element);
 
-		// Process all links to make them clickable
 		element
 			.querySelectorAll("a.internal-link, .cm-underline")
 			.forEach((link: HTMLElement) => {
 				const href =
 					link.getAttribute("href") || link.textContent?.trim();
 				if (href) {
-					// Handle different link formats and fragments
 					const cleanHref = href.replace(/[\[\],]/g, "").trim();
 					let filePath = cleanHref;
 					let fragment = "";
 
 					if (cleanHref.includes(" > ")) {
-						// Format: "file.md > Header" - convert to proper Obsidian format
 						const parts = cleanHref.split(" > ", 2);
 						filePath = parts[0].trim();
 						if (parts.length > 1) {
@@ -1736,7 +2026,6 @@ class VaultLLMAssistantView extends View {
 							parts.length > 1 ? "#" + parts[1].trim() : "";
 					}
 
-					// The full path to use when opening the link
 					const fullPath = fragment ? filePath + fragment : filePath;
 
 					link.addEventListener("click", (e) => {
@@ -1760,7 +2049,6 @@ class VaultLLMAssistantView extends View {
 					link.classList.add("vault-llm-link");
 					link.setAttribute("href", fullPath);
 
-					// Make sure the link text is visible and matches the path
 					if (
 						!link.textContent ||
 						link.textContent === "-" ||
@@ -1786,12 +2074,10 @@ class VaultLLMAssistantView extends View {
 			const fragment = document.createDocumentFragment();
 			let lastIndex = 0;
 
-			// Find wiki-style links [[...]]
 			const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
 			let match;
 
 			while ((match = wikiLinkRegex.exec(text)) !== null) {
-				// Add text before the match
 				if (match.index > lastIndex) {
 					fragment.appendChild(
 						document.createTextNode(
@@ -1802,13 +2088,11 @@ class VaultLLMAssistantView extends View {
 
 				const path = match[1].trim();
 
-				// Create link element
 				const linkEl = document.createElement("a");
 				linkEl.classList.add("internal-link", "vault-llm-link");
 				linkEl.setAttribute("href", path);
 				linkEl.textContent = path;
 
-				// Add event listener to open link
 				linkEl.addEventListener("click", (e) => {
 					e.preventDefault();
 					const file = this.app.metadataCache.getFirstLinkpathDest(
@@ -1826,16 +2110,13 @@ class VaultLLMAssistantView extends View {
 				lastIndex = match.index + match[0].length;
 			}
 
-			// Add remaining text
 			if (lastIndex < text.length) {
 				fragment.appendChild(
 					document.createTextNode(text.substring(lastIndex))
 				);
 			}
 
-			// Only replace content if we found wiki links
 			if (lastIndex > 0) {
-				// Clear paragraph content using proper DOM API
 				while (paragraph.firstChild) {
 					paragraph.removeChild(paragraph.firstChild);
 				}
@@ -1854,6 +2135,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 	plugin: VaultLLMAssistant;
 	openAIApiKeyVisible: boolean = false;
 	geminiApiKeyVisible: boolean = false;
+	claudeApiKeyVisible: boolean = false;
 
 	constructor(app: App, plugin: VaultLLMAssistant) {
 		super(app, plugin);
@@ -1868,9 +2150,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass("vault-llm-settings");
 
-		// LLM Provider setting
 
-		// 1. Use Local LLM Checkbox
 		new Setting(containerEl)
 			.setName("Use Local LLM (LM Studio)")
 			.setDesc("Toggle to use a local LLM server instead of online providers")
@@ -1879,13 +2159,27 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.useLocalLLM)
 					.onChange(async (value: boolean) => {
 						this.plugin.settings.useLocalLLM = value;
+						if (value) this.plugin.settings.useOllama = false;
 						await this.plugin.saveSettings();
 						this.display(); // Redraw settings
 					})
 			);
 
-		// 2. Online Provider Selection (Only if NOT using local LLM)
-		if (!this.plugin.settings.useLocalLLM) {
+		new Setting(containerEl)
+			.setName("Use Ollama")
+			.setDesc("Toggle to use Ollama instead of online providers")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useOllama)
+					.onChange(async (value: boolean) => {
+						this.plugin.settings.useOllama = value;
+						if (value) this.plugin.settings.useLocalLLM = false;
+						await this.plugin.saveSettings();
+						this.display(); // Redraw settings
+					})
+			);
+
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama) {
 			new Setting(containerEl)
 				.setName("Online Provider")
 				.setDesc("Select which online LLM provider to use")
@@ -1893,11 +2187,11 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					const dropdownEl = dropdown
 						.addOption("gpt", "OpenAI GPT")
 						.addOption("gemini", "Google Gemini")
+						.addOption("claude", "Anthropic Claude")
 						.setValue(this.plugin.settings.modelProvider)
 						.onChange(async (value) => {
 							this.plugin.settings.modelProvider = value;
 
-							// Update endpoints and default model based on provider
 							if (value === "gpt") {
 								this.plugin.settings.apiEndpoint =
 									"https://api.openai.com/v1/chat/completions";
@@ -1912,6 +2206,14 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 								) {
 									this.plugin.settings.model = "gemini-3-pro-preview";
 								}
+							} else if (value === "claude") {
+								this.plugin.settings.apiEndpoint =
+									"https://api.anthropic.com/v1/messages";
+								if (
+									!this.plugin.settings.model.startsWith("claude")
+								) {
+									this.plugin.settings.model = "claude-3-5-sonnet-20241022";
+								}
 							}
 
 							await this.plugin.saveSettings();
@@ -1922,7 +2224,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				});
 		}
 
-		// 3. LM Studio Settings (Only if using local LLM)
 		if (this.plugin.settings.useLocalLLM) {
 			new Setting(containerEl)
 				.setName("LM Studio API URL")
@@ -1951,19 +2252,44 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// OpenAI API Key (Only if Online AND Provider is GPT)
-		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gpt") {
+		if (this.plugin.settings.useOllama) {
+			new Setting(containerEl)
+				.setName("Ollama API URL")
+				.setDesc("The base URL for your Ollama server (e.g., http://localhost:11434)")
+				.addText((text: TextComponent) =>
+					text
+						.setPlaceholder("http://localhost:11434")
+						.setValue(this.plugin.settings.ollamaUrl)
+						.onChange(async (value: string) => {
+							this.plugin.settings.ollamaUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("Ollama Model Name")
+				.setDesc("The model identifier to use (e.g., llama3, mistral)")
+				.addText((text: TextComponent) =>
+					text
+						.setPlaceholder("llama3")
+						.setValue(this.plugin.settings.ollamaModel)
+						.onChange(async (value: string) => {
+							this.plugin.settings.ollamaModel = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "gpt") {
 			const openAIApiKeySetting = new Setting(containerEl)
 				.setName("OpenAI API key")
 				.setDesc("Enter your OpenAI API key (Required)");
 
-			// Create container for OpenAI API key input and toggle button
 			const openAIApiKeyContainer = createDiv({
 				cls: "vault-llm-apikey-container",
 			});
 			openAIApiKeySetting.controlEl.appendChild(openAIApiKeyContainer);
 
-			// Add text input for OpenAI
 			const openAIApiKeyInput = new TextComponent(openAIApiKeyContainer);
 			openAIApiKeyInput
 				.setPlaceholder("Enter your OpenAI API key")
@@ -1980,7 +2306,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				: "password";
 			openAIApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
 
-			// Add visibility toggle button for OpenAI
 			const openAIToggleButton = openAIApiKeyContainer.createEl("button", {
 				cls: "vault-llm-visibility-toggle",
 				text: this.openAIApiKeyVisible ? "Hide" : "Show",
@@ -2001,19 +2326,16 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		}
 
-		// Gemini API Key (Only if Online AND Provider is Gemini)
-		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gemini") {
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "gemini") {
 			const geminiApiKeySetting = new Setting(containerEl)
 				.setName("Gemini API key")
 				.setDesc("Enter your Google Gemini API key (Required)");
 
-			// Create container for Gemini API key input and toggle button
 			const geminiApiKeyContainer = createDiv({
 				cls: "vault-llm-apikey-container",
 			});
 			geminiApiKeySetting.controlEl.appendChild(geminiApiKeyContainer);
 
-			// Add text input for Gemini
 			const geminiApiKeyInput = new TextComponent(geminiApiKeyContainer);
 			geminiApiKeyInput
 				.setPlaceholder("Enter your Gemini API key")
@@ -2030,7 +2352,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				: "password";
 			geminiApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
 
-			// Add visibility toggle button for Gemini
 			const geminiToggleButton = geminiApiKeyContainer.createEl("button", {
 				cls: "vault-llm-visibility-toggle",
 				text: this.geminiApiKeyVisible ? "Hide" : "Show",
@@ -2051,7 +2372,52 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		}
 
-		// Test Connection Button
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "claude") {
+			const claudeApiKeySetting = new Setting(containerEl)
+				.setName("Claude API key")
+				.setDesc("Enter your Anthropic Claude API key (Required)");
+
+			const claudeApiKeyContainer = createDiv({
+				cls: "vault-llm-apikey-container",
+			});
+			claudeApiKeySetting.controlEl.appendChild(claudeApiKeyContainer);
+
+			const claudeApiKeyInput = new TextComponent(claudeApiKeyContainer);
+			claudeApiKeyInput
+				.setPlaceholder("Enter your Claude API key")
+				.setValue(
+					this.claudeApiKeyVisible
+						? this.plugin.getClaudeApiKey()
+						: "••••••••••••••••••••••••••"
+				)
+				.onChange(async (value: string) => {
+					await this.plugin.setApiKey(value, "claude");
+				});
+			claudeApiKeyInput.inputEl.type = this.claudeApiKeyVisible
+				? "text"
+				: "password";
+			claudeApiKeyInput.inputEl.addClass("vault-llm-apikey-input");
+
+			const claudeToggleButton = claudeApiKeyContainer.createEl("button", {
+				cls: "vault-llm-visibility-toggle",
+				text: this.claudeApiKeyVisible ? "Hide" : "Show",
+			});
+			claudeToggleButton.addEventListener("click", () => {
+				this.claudeApiKeyVisible = !this.claudeApiKeyVisible;
+				claudeApiKeyInput.inputEl.type = this.claudeApiKeyVisible
+					? "text"
+					: "password";
+				claudeApiKeyInput.setValue(
+					this.claudeApiKeyVisible
+						? this.plugin.getClaudeApiKey()
+						: "••••••••••••••••••••••••••"
+				);
+				claudeToggleButton.textContent = this.claudeApiKeyVisible
+					? "Hide"
+					: "Show";
+			});
+		}
+
 		const testConnectionSetting = new Setting(containerEl)
 			.setName("Test Connection")
 			.setDesc("Verify that your API key and selected model are working correctly")
@@ -2062,43 +2428,80 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 					try {
 						let result = "";
-						// Use strict 1 token generation to test connection
-						if (this.plugin.settings.modelProvider === "gpt") {
-							// Find model config
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.plugin.settings.model);
+						if (this.plugin.settings.useLocalLLM) {
+							let url = this.plugin.settings.lmStudioApiUrl;
+							if (!url.endsWith("/chat/completions")) {
+								url += url.endsWith("/") ? "chat/completions" : "/chat/completions";
+							}
 
-                            const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
-                            const body: any = {
-                                model: this.plugin.settings.model,
-                            };
+							const response = await requestUrl({
+								url: url,
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									model: this.plugin.settings.lmStudioModel,
+									messages: [{ role: "user", content: "Hi" }],
+									max_tokens: 1
+								}),
+							});
+							if (response.status === 200) result = "Success";
+						} else if (this.plugin.settings.useOllama) {
+							let url = this.plugin.settings.ollamaUrl;
+							if (!url.endsWith("/api/generate")) {
+								url += url.endsWith("/") ? "api/generate" : "/api/generate";
+							}
 
-                            const messages = [
-                                {
-                                    role: "user",
-                                    content: "Hi",
-                                },
-                            ];
+							const response = await requestUrl({
+								url: url,
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									model: this.plugin.settings.ollamaModel,
+									prompt: "Hi",
+									stream: false,
+									options: { num_predict: 1 }
+								}),
+							});
+							const jsonResponse = response.json;
+							if (jsonResponse.response) {
+								result = "Success";
+							} else {
+								throw new Error("Invalid response from Ollama");
+							}
+						} else if (this.plugin.settings.modelProvider === "gpt") {
+							// eslint-disable-next-line @typescript-eslint/no-explicit-any
+							const modelConfig = OPENAI_MODELS.find((m: any) => m.id === this.plugin.settings.model);
 
-                            if (endpoint === "/v1/responses") {
-                                body.input = messages;
-                            } else if (endpoint === "/v1/completions") {
-                                body.prompt = "Hi";
-                            } else {
-                                body.messages = messages;
-                            }
+							const endpoint = (modelConfig && modelConfig.endpoint) ? modelConfig.endpoint : "/v1/chat/completions";
+							const body: any = {
+								model: this.plugin.settings.model,
+							};
 
-                            const maxTokens = 50; // Use 50 to avoid max_tokens errors on reasoning models
+							const messages = [
+								{
+									role: "user",
+									content: "Hi",
+								},
+							];
 
-                            if (modelConfig && modelConfig.useMaxCompletionTokens) {
-                                body.max_completion_tokens = maxTokens;
-                            } else if (endpoint !== "/v1/responses") {
-                                body.max_tokens = maxTokens;
-                            }
+							if (endpoint === "/v1/responses") {
+								body.input = messages;
+							} else if (endpoint === "/v1/completions") {
+								body.prompt = "Hi";
+							} else {
+								body.messages = messages;
+							}
 
-                            const url = `https://api.openai.com${endpoint}`;
+							const maxTokens = 50; // Use 50 to avoid max_tokens errors on reasoning models
 
-							// For GPT, manual simple request
+							if (modelConfig && modelConfig.useMaxCompletionTokens) {
+								body.max_completion_tokens = maxTokens;
+							} else if (endpoint !== "/v1/responses") {
+								body.max_tokens = maxTokens;
+							}
+
+							const url = `https://api.openai.com${endpoint}`;
+
 							const response = await requestUrl({
 								url: url,
 								method: "POST",
@@ -2111,12 +2514,34 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 							if (response.status === 200) {
 								result = "Success";
 							}
-						} else {
-							// For Gemini, manual simple request
+						} else if (this.plugin.settings.modelProvider === "claude") {
 							const response = await requestUrl({
-								url: `https://generativelanguage.googleapis.com/v1beta/models/${
-									this.plugin.settings.model
-								}:generateContent?key=${this.plugin.getApiKey()}`,
+								url: "https://api.anthropic.com/v1/messages",
+								method: "POST",
+								headers: {
+									"x-api-key": this.plugin.getApiKey(),
+									"anthropic-version": "2023-06-01",
+									"anthropic-dangerously-allow-browser": "true",
+									"content-type": "application/json"
+								},
+								body: JSON.stringify({
+									model: this.plugin.settings.model,
+									max_tokens: 1,
+									messages: [{ role: "user", content: "Hi" }]
+								}),
+							});
+							if (response.status === 200 && !response.json.error) {
+								result = "Success";
+							} else if (response.json.error) {
+								throw new Error(
+									response.json.error.message ||
+									"Unknown Claude error"
+								);
+							}
+						} else {
+							const response = await requestUrl({
+								url: `https://generativelanguage.googleapis.com/v1beta/models/${this.plugin.settings.model
+									}:generateContent?key=${this.plugin.getApiKey()}`,
 								method: "POST",
 								headers: {
 									"Content-Type": "application/json",
@@ -2132,25 +2557,29 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 									},
 								}),
 							});
-							// Check for error in JSON response even if status is 200 (common in some APIs, though Gemini usually errors)
 							if (response.status === 200 && !response.json.error) {
 								result = "Success";
 							} else if (response.json.error) {
 								throw new Error(
 									response.json.error.message ||
-										"Unknown Gemini error"
+									"Unknown Gemini error"
 								);
 							}
 						}
 
+						const activeModel = this.plugin.settings.useLocalLLM
+							? this.plugin.settings.lmStudioModel
+							: this.plugin.settings.useOllama
+								? this.plugin.settings.ollamaModel
+								: this.plugin.settings.model;
+
 						new Notice(
-							`Connection successful! Connected to ${this.plugin.settings.model}`
+							`Connection successful! Connected to ${activeModel}`
 						);
 					} catch (error) {
 						console.error("Connection test failed:", error);
 						let msg = error.message;
 						if (error.text) {
-							// Try to parse detailed error from body if available
 							try {
 								const body = await error.text();
 								const parsed = JSON.parse(body);
@@ -2158,7 +2587,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 									msg = parsed.error.message;
 								}
 							} catch (e) {
-								// ignore
 							}
 						}
 						new Notice(`Connection failed: ${msg}`, 10000);
@@ -2169,8 +2597,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// Model selection
-		if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gpt") {
+		if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "gpt") {
 			new Setting(containerEl)
 				.setName("GPT model")
 				.setDesc("Select which GPT model to use")
@@ -2189,7 +2616,7 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 					return dropdown;
 				});
-		} else if (!this.plugin.settings.useLocalLLM && this.plugin.settings.modelProvider === "gemini") {
+		} else if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "gemini") {
 			new Setting(containerEl)
 				.setName("Gemini model")
 				.setDesc("Select which Gemini model to use")
@@ -2208,26 +2635,41 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
 					return dropdown;
 				});
+		} else if (!this.plugin.settings.useLocalLLM && !this.plugin.settings.useOllama && this.plugin.settings.modelProvider === "claude") {
+			new Setting(containerEl)
+				.setName("Claude model")
+				.setDesc("Select which Claude model to use")
+				.addDropdown((dropdown) => {
+					const dropdownEl = dropdown;
+					CLAUDE_MODELS.forEach((model: { id: string; name: string }) => {
+						dropdownEl.addOption(model.id, model.name);
+					});
+
+					dropdownEl
+						.setValue(this.plugin.settings.model)
+						.onChange(async (value) => {
+							this.plugin.settings.model = value;
+							await this.plugin.saveSettings();
+						});
+					dropdownEl.selectEl.addClass("vault-llm-wide-dropdown");
+					return dropdown;
+				});
 		}
 
-		// Max Tokens with improved display
 		const maxTokensSetting = new Setting(containerEl)
 			.setName("Max tokens")
 			.setDesc("Maximum number of tokens in the response");
 
-		// Container for slider and value display
 		const maxTokensContainer = createDiv({
 			cls: "vault-llm-slider-container",
 		});
 		maxTokensSetting.controlEl.appendChild(maxTokensContainer);
 
-		// Value display
 		const maxTokensValueDisplay = maxTokensContainer.createDiv({
 			cls: "vault-llm-slider-value",
 			text: this.plugin.settings.maxTokens.toString(),
 		});
 
-		// Add slider
 		const maxTokensSlider = new SliderComponent(maxTokensContainer)
 			.setLimits(100, 4000, 100)
 			.setValue(this.plugin.settings.maxTokens)
@@ -2238,24 +2680,20 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		maxTokensSlider.sliderEl.addClass("vault-llm-slider");
 
-		// Temperature with improved display
 		const temperatureSetting = new Setting(containerEl)
 			.setName("Temperature")
 			.setDesc(
 				"Controls randomness in responses (0-2, lower is more focused)"
 			);
 
-		// Container for slider and value display
 		const tempContainer = createDiv({ cls: "vault-llm-slider-container" });
 		temperatureSetting.controlEl.appendChild(tempContainer);
 
-		// Value display
 		const tempValueDisplay = tempContainer.createDiv({
 			cls: "vault-llm-slider-value",
 			text: this.plugin.settings.temperature.toString(),
 		});
 
-		// Add slider
 		const tempSlider = new SliderComponent(tempContainer)
 			.setLimits(0, 2, 0.1)
 			.setValue(this.plugin.settings.temperature)
@@ -2266,7 +2704,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		tempSlider.sliderEl.addClass("vault-llm-slider");
 
-		// Include current file only
 		new Setting(containerEl)
 			.setName("Include current file only")
 			.setDesc(
@@ -2281,7 +2718,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Default folder for new notes
 		new Setting(containerEl)
 			.setName("Default folder for new notes")
 			.setDesc(
@@ -2297,7 +2733,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Use LLM for note titles
 		new Setting(containerEl)
 			.setName("Generate note titles with LLM")
 			.setDesc(
@@ -2312,7 +2747,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Use vault content in prompts
 		new Setting(containerEl)
 			.setName("Use vault content in prompts")
 			.setDesc("When enabled, includes the vault content in prompts")
@@ -2325,7 +2759,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Mode selection
 		new Setting(containerEl)
 			.setName("Mode")
 			.setDesc("Select the current mode: query or create notes")
@@ -2342,12 +2775,10 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 				return dropdown;
 			});
 
-		// Create folder management section
 		const folderSection = containerEl.createDiv({
 			cls: "vault-llm-folder-section",
 		});
 
-		// Include Folders
 		const includeFolderSection = folderSection.createDiv({
 			cls: "vault-llm-folder-subsection",
 		});
@@ -2356,13 +2787,11 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			cls: "vault-llm-section-header",
 		});
 
-		// Description
 		includeFolderSection.createEl("p", {
 			text: "Only include files from these folders (leave empty to include all)",
 			cls: "vault-llm-section-desc",
 		});
 
-		// Input for new include folder
 		const includeFolderContainer = includeFolderSection.createDiv({
 			cls: "vault-llm-folder-input-container",
 		});
@@ -2371,11 +2800,9 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			.setPlaceholder("folder/path (comma-separated paths)")
 			.setValue(this.plugin.settings.includeFolder || "");
 
-		// Add additional styling to the input element
 		includeFolderInput.inputEl.addClass("vault-llm-folder-textbox");
 		includeFolderInput.inputEl.setAttribute("rows", "2");
 
-		// Add button for include folder
 		const includeAddButton = includeFolderContainer.createEl("button", {
 			text: "Save",
 			cls: "vault-llm-folder-add-button",
@@ -2387,7 +2814,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			this.display(); // Refresh view
 		});
 
-		// Exclude Folders section
 		const excludeFolderSection = folderSection.createDiv({
 			cls: "vault-llm-folder-subsection",
 		});
@@ -2396,13 +2822,11 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			cls: "vault-llm-section-header",
 		});
 
-		// Description
 		excludeFolderSection.createEl("p", {
 			text: "Folders to exclude from scanning (case sensitive)",
 			cls: "vault-llm-section-desc",
 		});
 
-		// Display current excluded folders
 		const excludedFoldersDisplay = excludeFolderSection.createDiv({
 			cls: "vault-llm-excluded-list",
 		});
@@ -2433,7 +2857,6 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			});
 		}
 
-		// Input for new exclude folder
 		const excludeFolderContainer = excludeFolderSection.createDiv({
 			cls: "vault-llm-folder-input-container",
 		});
@@ -2442,11 +2865,9 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 			"folder/to/exclude (comma-separated paths)"
 		);
 
-		// Add additional styling to the input element
 		excludeFolderInput.inputEl.addClass("vault-llm-folder-textbox");
 		excludeFolderInput.inputEl.setAttribute("rows", "2");
 
-		// Add button for exclude folder
 		const excludeAddButton = excludeFolderContainer.createEl("button", {
 			text: "Add",
 			cls: "vault-llm-folder-add-button",
@@ -2454,13 +2875,11 @@ class VaultLLMAssistantSettingTab extends PluginSettingTab {
 		excludeAddButton.addEventListener("click", async () => {
 			const input = excludeFolderInput.getValue();
 			if (input) {
-				// Split by comma and trim each entry
 				const folders = input
 					.split(",")
 					.map((f: string) => f.trim())
 					.filter((f: string) => f);
 
-				// Add each folder that's not already in the list
 				folders.forEach((folder) => {
 					if (!this.plugin.settings.excludeFolder.includes(folder)) {
 						this.plugin.settings.excludeFolder.push(folder);
