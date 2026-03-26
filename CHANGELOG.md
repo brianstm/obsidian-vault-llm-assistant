@@ -2,6 +2,13 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.0.11 - 2026-03-26
+
+### New Features
+
+- Added new models and removing deprecated models.
+- Added a model validation
+
 ## 1.0.10 - 2026-03-24
 
 ### New Features
