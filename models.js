@@ -1,4 +1,7 @@
 const OPENAI_MODELS = [
+  { id: "gpt-5.4", name: "GPT-5.4", useMaxCompletionTokens: true },
+  { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", useMaxCompletionTokens: true },
+  { id: "gpt-5.4-nano", name: "GPT-5.4 Nano", useMaxCompletionTokens: true },  
 	{ id: "gpt-5.2-pro", name: "GPT-5.2 Pro", endpoint: "/v1/responses" },
 	{ id: "gpt-5.2", name: "GPT-5.2", useMaxCompletionTokens: true },
 	{ id: "gpt-5.1", name: "GPT-5.1", useMaxCompletionTokens: true },
@@ -23,7 +26,8 @@ const OPENAI_MODELS = [
 ];
 
 const GEMINI_MODELS = [
-	{ id: "gemini-3-pro-preview", name: "Gemini 3.0 Pro (Preview)" },
+  { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Preview)" },
+  { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash-Lite (Preview)" },
 	{ id: "gemini-3-flash-preview", name: "Gemini 3.0 Flash (Preview)" },
 	{ id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
 	{ id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
@@ -40,13 +44,8 @@ const CLAUDE_MODELS = [
 	{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
 	{ id: "claude-opus-4-5", name: "Claude Opus 4.5" },
 	{ id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
+	{ id: "claude-opus-4-1", name: "Claude Opus 4.1" },
 	{ id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" },
-	{ id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Latest)" },
-	{ id: "claude-3-5-sonnet-20240620", name: "Claude 3.5 Sonnet (20240620)" },
-	{ id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
-	{ id: "claude-3-opus-20240229", name: "Claude 3 Opus" },
-	{ id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet" },
-	{ id: "claude-3-haiku-20240307", name: "Claude 3 Haiku" },
 ];
 
 module.exports = {

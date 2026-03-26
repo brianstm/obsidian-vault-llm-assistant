@@ -1,6 +1,6 @@
 const https = require('https');
 const readline = require('readline');
-const { OPENAI_MODELS, GEMINI_MODELS } = require('./models');
+const { OPENAI_MODELS, GEMINI_MODELS, CLAUDE_MODELS } = require('./models');
 
 // ANSI colors for output
 const colors = {
@@ -138,6 +138,55 @@ async function validateGemini(apiKey) {
     }
 }
 
+async function validateClaude(apiKey) {
+    console.log(`\n${colors.cyan}--- Validating Claude Models ---${colors.reset}`);
+
+    for (const modelObj of CLAUDE_MODELS) {
+        const model = modelObj.id;
+        process.stdout.write(`Testing ${model.padEnd(35)} ... `);
+
+        try {
+            await new Promise((resolve, reject) => {
+                const req = https.request('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey,
+                        'anthropic-version': '2023-06-01'
+                    }
+                }, res => {
+                    let data = '';
+                    res.on('data', chunk => data += chunk);
+                    res.on('end', () => {
+                        if (res.statusCode === 200) {
+                            resolve();
+                        } else {
+                            try {
+                                const err = JSON.parse(data);
+                                reject(new Error(err.error?.message || `Status ${res.statusCode}`));
+                            } catch (e) {
+                                reject(new Error(`Status ${res.statusCode}`));
+                            }
+                        }
+                    });
+                });
+
+                req.on('error', reject);
+
+                req.write(JSON.stringify({
+                    model: model,
+                    max_tokens: 1,
+                    messages: [{ role: "user", content: "Hi" }]
+                }));
+                req.end();
+            });
+            console.log(`${colors.green}OK${colors.reset}`);
+        } catch (error) {
+            console.log(`${colors.red}FAILED${colors.reset} (${error.message})`);
+        }
+    }
+}
+
 function parseArgs() {
     const args = process.argv.slice(2);
     const parsed = {};
@@ -147,6 +196,9 @@ function parseArgs() {
             i++;
         } else if (args[i] === '--gemini' && args[i+1]) {
             parsed.gemini = args[i+1];
+            i++;
+        } else if (args[i] === '--claude' && args[i+1]) {
+            parsed.claude = args[i+1];
             i++;
         }
     }
@@ -158,12 +210,12 @@ async function main() {
     const args = parseArgs();
 
     // Check if any args were provided to skip prompts
-    const hasArgs = args.openai || args.gemini;
+    const hasArgs = args.openai || args.gemini || args.claude;
 
     if (!hasArgs) {
         console.log("This script will test the availability of the models defined in the plugin.");
         console.log("You will need valid API keys for OpenAI and/or Google Gemini.\n");
-        console.log("Usage with args: node validate_models.js --openai KEY --gemini KEY\n");
+        console.log("Usage with args: node validate_models.js --openai KEY --gemini KEY --claude KEY\n");
     }
 
     // OpenAI Validation
@@ -190,6 +242,21 @@ async function main() {
             const apiKey = await prompt("Enter Gemini API Key: ");
             if (apiKey) {
                 await validateGemini(apiKey.trim());
+            } else {
+                console.log("Skipping due to missing API Key.");
+            }
+        }
+    }
+
+    // Claude Validation
+    if (args.claude) {
+        await validateClaude(args.claude);
+    } else if (!hasArgs) {
+        const checkClaude = await prompt("\nValidate Claude models? (y/n): ");
+        if (checkClaude.toLowerCase() === 'y') {
+            const apiKey = await prompt("Enter Anthropic API Key: ");
+            if (apiKey) {
+                await validateClaude(apiKey.trim());
             } else {
                 console.log("Skipping due to missing API Key.");
             }
