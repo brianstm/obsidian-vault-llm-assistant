@@ -8,7 +8,15 @@ Chat with your Obsidian notes using AI. Get answers that link back to your notes
 
 <div align="center">
   <a href="https://github.com/brianstm/obsidian-vault-llm-assistant/releases">
-    <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />## Features
+    <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />
+  </a>
+</div>
+
+<br />
+
+![Asking a question about your notes and opening the linked source](assets/demo.gif)
+
+## Features
 
 - **Chat with your vault.** Ask a question in the sidebar and get an answer with links to the notes it used. You can keep asking follow-up questions in the same chat.
 - **Finds the right notes for you.** It looks for the notes that best match your question and only sends those, so it works fine with big vaults. You can also stick to the note you have open, or leave your notes out.
@@ -21,12 +29,6 @@ Chat with your Obsidian notes using AI. Get answers that link back to your notes
 - Can also send images from your notes to models that support them.
 
 See the [Changelog](CHANGELOG.md) for what changed in each version.
-
-## Screenshots
-
-![Query interface](images/ask_1.png)
-![Generated notes view](images/generated_notes.png)
-![Create interface](images/create_1.png)
 
 ## Installation
 
@@ -149,9 +151,6 @@ git clone https://github.com/brianstm/obsidian-vault-llm-assistant.git
 cd obsidian-vault-llm-assistant
 npm install
 npm run dev
-```
-
-pm run dev
 ```
 
 ## License
