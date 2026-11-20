@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-vault-llm-assistant",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "An Obsidian plugin that answers questions about your vault and writes notes using OpenAI, Claude, Gemini, Groq, NVIDIA NIM, OpenRouter, Mistral, DeepSeek, xAI, LM Studio, Ollama or any OpenAI-compatible server.",
 	"main": "main.js",
 	"scripts": {

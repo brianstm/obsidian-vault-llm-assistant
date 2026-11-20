@@ -2,6 +2,16 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.1.1 - 2026-11-20
+
+### New features
+
+- You can now pick the keyboard shortcut that sends a message, under "Send message with" in the settings. Choose Cmd+Enter or Ctrl+Enter, Enter, Shift+Enter, or Option/Alt+Enter. The default is Cmd+Enter on Mac and Ctrl+Enter on Windows and Linux.
+
+### Bug fixes
+
+- Cmd+Enter now sends on Mac. Before, Obsidian's own hotkeys grabbed it first, so only Ctrl+Enter worked.
+
 ## 1.1.0 - 2026-11-20
 
 ### New features

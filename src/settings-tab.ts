@@ -2,6 +2,7 @@ import { Notice, PluginSettingTab, SecretComponent, Setting, debounce, type App 
 import type VaultLLMAssistant from "./main";
 import { PROVIDERS, PROVIDER_ORDER, complete, listModels } from "./providers";
 import { DEFAULT_TEMPLATES } from "./settings";
+import { shortcutOptions } from "./shortcuts";
 import { TEMPLATE_OUTPUT_LABELS, errorText } from "./templates";
 import type {
 	AssistantMode,
@@ -9,6 +10,7 @@ import type {
 	ContextStrategy,
 	ProviderId,
 	ReasoningEffort,
+	SendShortcut,
 	TemplateOutput,
 } from "./types";
 
@@ -414,7 +416,7 @@ export class VaultLLMAssistantSettingTab extends PluginSettingTab {
 
 	private renderNotes(containerEl: HTMLElement) {
 		const settings = this.plugin.settings;
-		new Setting(containerEl).setName("New notes").setHeading();
+		new Setting(containerEl).setName("Chat and new notes").setHeading();
 
 		new Setting(containerEl)
 			.setName("Folder for new notes")
@@ -437,6 +439,19 @@ export class VaultLLMAssistantSettingTab extends PluginSettingTab {
 					settings.generateTitlesWithLLM = value;
 					await this.save();
 				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Send message with")
+			.setDesc("The keyboard shortcut that sends your message in the chat and in the question popup.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOptions(shortcutOptions())
+					.setValue(settings.sendShortcut)
+					.onChange(async (value) => {
+						settings.sendShortcut = value as SendShortcut;
+						await this.save();
+					}),
 			);
 
 		new Setting(containerEl)

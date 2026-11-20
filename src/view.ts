@@ -7,8 +7,9 @@ import {
 	Keymap,
 	MarkdownRenderer,
 	Notice,
-	Platform,
+	Scope,
 	setIcon,
+	type KeymapEventHandler,
 	type TFile,
 	type WorkspaceLeaf,
 } from "obsidian";
@@ -16,7 +17,8 @@ import type VaultLLMAssistant from "./main";
 import { buildContext } from "./context";
 import { LLMError } from "./providers";
 import { systemPrompt, unwrapMarkdownFence, userTurn } from "./prompts";
-import type { AssistantMode, ChatMessage, ContextScope } from "./types";
+import { matchesShortcut, shortcutLabel, shortcutModifiers } from "./shortcuts";
+import type { AssistantMode, ChatMessage, ContextScope, SendShortcut } from "./types";
 
 export const VIEW_TYPE = "vault-llm-assistant-view";
 
@@ -61,11 +63,15 @@ export class AssistantView extends ItemView {
 	private modeDropdown!: DropdownComponent;
 	private scopeDropdown!: DropdownComponent;
 
+	private sendKey: KeymapEventHandler | null = null;
+	private sendKeyShortcut: SendShortcut | null = null;
+
 	constructor(
 		leaf: WorkspaceLeaf,
 		private plugin: VaultLLMAssistant,
 	) {
 		super(leaf);
+		this.scope = new Scope(this.app.scope);
 	}
 
 	getViewType(): string {
@@ -115,7 +121,7 @@ export class AssistantView extends ItemView {
 			attr: { rows: "3" },
 		});
 		this.registerDomEvent(this.inputEl, "keydown", (evt) => {
-			if (evt.key === "Enter" && (evt.metaKey || evt.ctrlKey) && !evt.isComposing) {
+			if (!evt.defaultPrevented && matchesShortcut(evt, this.plugin.settings.sendShortcut)) {
 				evt.preventDefault();
 				this.submit();
 			}
@@ -151,11 +157,24 @@ export class AssistantView extends ItemView {
 		this.modelBadgeEl.setText(this.plugin.modelLabel());
 		this.modeDropdown.setValue(this.plugin.settings.mode);
 		this.scopeDropdown.setValue(this.plugin.settings.contextScope);
-		const shortcut = Platform.isMacOS ? "Cmd+Enter" : "Ctrl+Enter";
+		this.registerSendKey();
+		const shortcut = shortcutLabel(this.plugin.settings.sendShortcut);
 		this.inputEl.placeholder =
 			this.plugin.settings.mode === "query"
 				? `Ask about your notes (${shortcut} to send)`
 				: `What should the new note be about? (${shortcut} to send)`;
+	}
+
+	private registerSendKey() {
+		const shortcut = this.plugin.settings.sendShortcut;
+		if (!this.scope || this.sendKeyShortcut === shortcut) return;
+		if (this.sendKey) this.scope.unregister(this.sendKey);
+		this.sendKeyShortcut = shortcut;
+		this.sendKey = this.scope.register(shortcutModifiers(shortcut), "Enter", (evt) => {
+			if (activeDocument.activeElement !== this.inputEl || !matchesShortcut(evt, shortcut)) return true;
+			this.submit();
+			return false;
+		});
 	}
 
 	private renderEmptyState() {

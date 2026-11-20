@@ -12,11 +12,13 @@ import {
 import type VaultLLMAssistant from "./main";
 import { buildContext } from "./context";
 import { systemPrompt, unwrapMarkdownFence, userTurn } from "./prompts";
+import { matchesShortcut, shortcutLabel, shortcutModifiers } from "./shortcuts";
 import { TEMPLATE_OUTPUT_LABELS, errorText, runTemplate } from "./templates";
 import type { AssistantMode, ContextScope, PromptTemplate } from "./types";
 
 export class QueryModal extends Modal {
 	private inputEl!: HTMLTextAreaElement;
+	private submitted = false;
 
 	constructor(
 		app: App,
@@ -42,14 +44,20 @@ export class QueryModal extends Modal {
 			cls: "vault-llm-modal-input",
 			attr: {
 				rows: "4",
-				placeholder: isQuery ? "What would you like to know?" : "What should the note be about?",
+				placeholder: `${isQuery ? "What would you like to know?" : "What should the note be about?"} (${shortcutLabel(this.plugin.settings.sendShortcut)} to send)`,
 			},
 		});
+		const shortcut = this.plugin.settings.sendShortcut;
 		this.inputEl.addEventListener("keydown", (evt) => {
-			if (evt.key === "Enter" && (evt.metaKey || evt.ctrlKey)) {
+			if (!evt.defaultPrevented && matchesShortcut(evt, shortcut)) {
 				evt.preventDefault();
 				this.submit();
 			}
+		});
+		this.scope.register(shortcutModifiers(shortcut), "Enter", (evt) => {
+			if (!matchesShortcut(evt, shortcut)) return true;
+			this.submit();
+			return false;
 		});
 
 		new Setting(contentEl)
@@ -65,11 +73,13 @@ export class QueryModal extends Modal {
 	}
 
 	private submit() {
+		if (this.submitted) return;
 		const query = this.inputEl.value.trim();
 		if (!query) {
 			new Notice(this.mode === "query" ? "Type a question first." : "Type a topic first.");
 			return;
 		}
+		this.submitted = true;
 		this.close();
 		if (this.mode === "query") {
 			void this.plugin.activateView().then((view) => view?.ask(query, this.file, { scope: this.contextScope, mode: "query" }));

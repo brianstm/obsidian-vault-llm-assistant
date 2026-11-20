@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: VaultLLMAssistantSettings = {
 	newNoteFolder: "",
 	generateTitlesWithLLM: true,
 	mode: "query",
+	sendShortcut: "mod-enter",
 	templates: DEFAULT_TEMPLATES.map((t) => ({ ...t })),
 };
 
@@ -135,6 +136,7 @@ export function migrateSettings(raw: unknown): {
 		"newNoteFolder",
 		"generateTitlesWithLLM",
 		"mode",
+		"sendShortcut",
 	] as const;
 	for (const key of sameShape) {
 		const value = data[key];
@@ -232,6 +234,7 @@ export function migrateSettings(raw: unknown): {
 	if (!["vault", "current", "none"].includes(settings.contextScope)) settings.contextScope = DEFAULT_SETTINGS.contextScope;
 	if (!["relevant", "all"].includes(settings.contextStrategy)) settings.contextStrategy = DEFAULT_SETTINGS.contextStrategy;
 	if (!["default", "low", "medium", "high"].includes(settings.reasoningEffort)) settings.reasoningEffort = "default";
+	if (!["mod-enter", "ctrl-enter", "enter", "shift-enter", "alt-enter"].includes(settings.sendShortcut)) settings.sendShortcut = "mod-enter";
 	if (settings.mode !== "query" && settings.mode !== "create") settings.mode = "query";
 
 	return { settings, legacyKeys, changed };

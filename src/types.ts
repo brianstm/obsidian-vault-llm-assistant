@@ -18,6 +18,8 @@ export type ContextScope = "vault" | "current" | "none";
 
 export type ContextStrategy = "relevant" | "all";
 
+export type SendShortcut = "mod-enter" | "ctrl-enter" | "enter" | "shift-enter" | "alt-enter";
+
 export type ReasoningEffort = "default" | "low" | "medium" | "high";
 
 export type TemplateOutput = "replace" | "insert" | "chat" | "note";
@@ -56,6 +58,7 @@ export interface VaultLLMAssistantSettings {
 	newNoteFolder: string;
 	generateTitlesWithLLM: boolean;
 	mode: AssistantMode;
+	sendShortcut: SendShortcut;
 	templates: PromptTemplate[];
 }
 
