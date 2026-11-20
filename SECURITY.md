@@ -1,21 +1,17 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Supported versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+Only the latest release gets security fixes, so keep the plugin updated from Obsidian's Community plugins settings.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Reporting a problem
 
-## Reporting a Vulnerability
+Please report security issues privately on GitHub. Go to the repo's **Security** tab and pick **Report a vulnerability**. Don't open a public issue for it.
 
-Use this section to tell people how to report a vulnerability.
+Let me know the plugin version, your Obsidian version and platform, and how to reproduce it. I'll try to reply within a week. If it's a real issue, I'll ship a fix as soon as I can and credit you in the changelog, unless you'd rather not be named.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+## How your data is handled
+
+- **API keys** are kept in Obsidian's secret storage, not in the plugin's `data.json`.
+- **Your notes** only go to the provider you picked, and only when you ask a question, write a note or run a template. The "Vault context" settings decide which notes get sent. You can skip folders or turn notes off completely.
+- The plugin doesn't track you and doesn't talk to any other servers.

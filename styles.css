@@ -1,646 +1,268 @@
-/*
- * Vault LLM Assistant - Core Styles
- */
-
-/* Main view container */
-.vault-llm-assistant-view {
-	padding: 15px;
-	max-width: 100%;
-	box-sizing: border-box;
-}
-
-.vault-llm-assistant-view h2 {
-	text-align: center;
-	margin-bottom: 12px;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-intro-text {
-	margin: 5px 0 10px;
-	font-size: 0.95em;
-	color: var(--text-muted);
-}
-
-/* Input and controls */
-.vault-llm-input-container {
-	margin-bottom: 10px;
-}
-
-.vault-llm-input-container textarea {
-	width: 100%;
-	border-radius: 8px;
-	padding: 10px;
-	resize: vertical;
-	min-height: 70px;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-options-container {
-	display: flex;
-	align-items: center;
-	margin: 5px 0;
-	padding: 0 5px;
-}
-
-.vault-llm-option-toggle {
-	display: flex;
-	align-items: center;
-	font-size: 0.85em;
-	opacity: 0.8;
-	margin-right: 15px;
-}
-
-.vault-llm-option-toggle input[type="checkbox"] {
-	margin-right: 4px;
-}
-
-.vault-llm-button-container {
-	display: flex;
-	justify-content: flex-end;
-	margin-top: 3px;
-}
-
-.vault-llm-button-container button {
-	padding: 6px 20px;
-	border-radius: 6px;
-	font-weight: bold;
-}
-
-/* Response area and content */
-.vault-llm-response-container {
-	margin-top: 8px;
-	max-height: calc(100vh - 230px);
-	overflow-y: auto;
-	border-radius: 8px;
-	padding: 0 5px 30px 5px;
-}
-
-.vault-llm-query {
-	margin-bottom: 5px;
-	font-size: 0.92em;
-	padding: 6px 8px;
-	border-radius: 6px;
-	background-color: var(--background-primary-alt);
-}
-
-.vault-llm-answer {
-	padding: 12px;
-	border-radius: 6px;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-}
-
-/* Make text selectable */
-.vault-llm-selectable {
-	user-select: text;
-	cursor: text;
-}
-
-.vault-llm-selectable pre,
-.vault-llm-selectable code,
-.vault-llm-selectable p,
-.vault-llm-selectable h1,
-.vault-llm-selectable h2,
-.vault-llm-selectable h3,
-.vault-llm-selectable h4,
-.vault-llm-selectable h5,
-.vault-llm-selectable h6,
-.vault-llm-selectable ul,
-.vault-llm-selectable ol,
-.vault-llm-selectable li,
-.vault-llm-selectable blockquote {
-	user-select: text;
-	cursor: text;
-}
-
-/* Notification and status messages */
-.vault-llm-info-message {
-	padding: 10px;
-	background-color: var(--background-secondary);
-	border-radius: 5px;
-	margin-bottom: 15px;
-	color: var(--text-muted);
-	font-style: italic;
-	border-left: 3px solid var(--interactive-accent);
-}
-
-/* Error message styling with improved readability */
-.vault-llm-error-message {
-	padding: 10px;
-	background-color: var(--background-secondary);
-	border-radius: 5px;
-	margin-bottom: 15px;
-	color: var(--text-error);
-	border-left: 3px solid var(--text-error);
-}
-
-.vault-llm-error-title {
-	font-weight: bold;
-	margin-bottom: 5px;
-}
-
-.vault-llm-error-details {
-	margin-top: 5px;
-	font-size: 0.9em;
-}
-
-.vault-llm-error-help {
-	margin-top: 10px;
-	font-style: italic;
-	color: var(--text-muted);
-	font-size: 0.9em;
-	border-top: 1px solid var(--background-modifier-border);
-	padding-top: 8px;
-}
-
-/* Action buttons */
-.vault-llm-action-buttons {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 10px;
-	padding: 5px 0;
-	justify-content: flex-end;
-	margin-bottom: 20px;
-}
-
-.vault-llm-action-button {
-	padding: 5px 10px;
-	border-radius: 4px;
-	font-size: 12px;
-	background-color: var(--interactive-normal);
-	color: var(--text-normal);
-	border: 1px solid var(--background-modifier-border);
-	cursor: pointer;
-	transition: background-color 0.2s ease;
-}
-
-.vault-llm-action-button:hover {
-	background-color: var(--interactive-hover);
-}
-
-.vault-llm-action-button:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
-	background-color: var(--background-modifier-border);
-}
-
-.vault-llm-loading {
-	text-align: center;
-	padding: 10px;
-	font-style: italic;
-	color: var(--text-muted);
-	margin: 8px 0;
-}
-
-/* Legacy error style - maintained for backward compatibility */
-.vault-llm-error {
-	padding: 15px;
-	border-radius: 6px;
-	background-color: rgba(255, 0, 0, 0.1);
-	color: rgb(200, 0, 0);
-	border: 1px solid rgba(255, 0, 0, 0.2);
-}
-
-/* Code and content formatting */
-.vault-llm-answer pre {
-	background-color: var(--code-background);
-	padding: 10px;
-	border-radius: 6px;
-	overflow-x: auto;
-}
-
-.vault-llm-answer code {
-	font-family: var(--font-monospace);
-	font-size: 13px;
-}
-
-/* Link specific styling */
-.vault-llm-link {
-	color: var(--link-color) !important;
-	text-decoration: none;
-	border-bottom: 1px solid var(--link-color);
-	padding: 0 2px;
-	cursor: pointer;
-	display: inline-block;
-	margin: 0 1px;
-}
-
-.vault-llm-link:hover {
-	background-color: rgba(var(--link-color-rgb), 0.1);
-	border-radius: 2px;
-}
-
-/* Class for links that need to be explicitly visible */
-.vault-llm-visible-link {
-	color: var(--link-color) !important;
-	opacity: 1 !important;
-	text-decoration: none;
-	display: inline-block;
-	font-weight: 500;
-}
-
-.vault-llm-answer p {
-	word-break: break-word;
-	overflow-wrap: break-word;
-	hyphens: auto;
-}
-
-/* Settings page */
-.vault-llm-settings h2 {
-	text-align: center;
-	margin-bottom: 20px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-settings .setting-item {
-	padding: 15px;
-	border-radius: 8px;
-	margin-bottom: 12px;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-settings .setting-item:hover {
-	background-color: var(--background-primary-alt);
-}
-
-.vault-llm-wide-dropdown {
-	min-width: 220px !important;
-	max-width: 300px !important;
-}
-
-.vault-llm-apikey-container {
-	display: flex;
-	width: 100%;
-	align-items: center;
-}
-
-.vault-llm-apikey-input {
-	width: 300px !important;
-	margin-right: 5px;
-	font-family: var(--font-monospace);
-}
-
-.vault-llm-visibility-toggle {
-	padding: 4px 10px;
-	border-radius: 4px;
-	background-color: var(--interactive-normal);
-	color: var(--text-normal);
-	font-size: 12px;
-	cursor: pointer;
-}
-
-.vault-llm-visibility-toggle:hover {
-	background-color: var(--interactive-hover);
-}
-
-/* Sliders */
-.vault-llm-slider-container {
-	display: flex;
-	align-items: center;
-	width: 100%;
-}
-
-.vault-llm-slider {
-	flex-grow: 1;
-	height: 6px;
-	margin-right: 12px;
-}
-
-.vault-llm-slider-value {
-	min-width: 40px;
-	text-align: center;
-	padding: 3px 8px;
-	border-radius: 4px;
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-weight: bold;
-	font-size: 0.9em;
-}
-
-/* Folder settings */
-.vault-llm-folder-section {
-	margin-top: 35px;
-	border-top: 1px solid var(--background-modifier-border);
-	padding-top: 25px;
-}
-
-.vault-llm-folder-subsection {
-	margin-bottom: 25px;
-	padding: 20px;
-	border-radius: 8px;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-section-header {
-	margin: 0 0 12px 0;
-	font-size: 1.3em;
-	color: var(--text-normal);
-	font-weight: 600;
-}
-
-.vault-llm-section-desc {
-	margin: 0 0 15px 0;
-	font-size: 0.9em;
-	color: var(--text-muted);
-}
-
-.vault-llm-folder-input-container {
-	display: flex;
-	margin: 15px 0;
-	gap: 12px;
-}
-
-.vault-llm-folder-input-container .text-input {
-	flex-grow: 1;
-	margin-right: 0;
-	height: 36px;
-	font-size: 1em;
-	padding: 6px 10px;
-	border-radius: 6px;
-	width: 100%;
-	min-width: 300px;
-}
-
-.vault-llm-folder-textbox {
-	height: auto !important;
-	min-height: 45px !important;
-	width: 100%;
-	padding: 8px 12px !important;
-	font-size: 1.05em !important;
-	line-height: 1.4 !important;
-	border-radius: 6px;
-	transition: all 0.2s ease;
-	resize: vertical;
-	box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.vault-llm-folder-textbox:focus {
-	box-shadow: 0 0 0 2px var(--interactive-accent),
-		inset 0 1px 3px rgba(0, 0, 0, 0.1);
-	outline: none;
-}
-
-.vault-llm-folder-add-button {
-	padding: 6px 12px;
-	border-radius: 6px;
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-weight: bold;
-	cursor: pointer;
-	min-width: 70px;
-	text-align: center;
-	height: 36px;
-	margin-top: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.vault-llm-excluded-list {
-	max-height: 150px;
-	overflow-y: auto;
-	margin: 10px 0;
-	padding: 5px;
-	border-radius: 4px;
-	background-color: var(--background-secondary);
-}
-
-.vault-llm-folder-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 6px 8px;
-	margin-bottom: 8px;
-	border-radius: 4px;
-	background-color: var(--background-primary-alt);
-}
-
-.vault-llm-folder-item:last-child {
-	margin-bottom: 0;
-}
-
-.vault-llm-folder-path {
-	font-family: var(--font-monospace);
-	font-size: 0.9em;
-}
-
-.vault-llm-folder-remove-button {
-	padding: 4px 10px;
-	border-radius: 4px;
-	background-color: rgba(255, 0, 0, 0.1);
-	color: #ff5555;
-	font-size: 12px;
-	min-width: 80px;
-	text-align: center;
-	margin-left: 12px;
-}
-
-.vault-llm-folder-remove-button:hover {
-	background-color: rgba(255, 0, 0, 0.2);
-}
-
-.vault-llm-empty-list {
-	padding: 10px;
-	text-align: center;
-	color: var(--text-muted);
-	font-style: italic;
-}
-
-/* Workspace sources */
-.vault-llm-workspace-sources {
-	margin: 10px 0;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background-color: var(--background-primary-alt);
+.vault-llm-view {
 	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
 }
 
-.vault-llm-sources-header {
-	padding: 8px 12px;
-	cursor: pointer;
-	user-select: none;
-	background-color: var(--background-secondary);
-	transition: background-color 0.2s ease;
+.vault-llm-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	flex-shrink: 0;
 }
 
-.vault-llm-sources-header:hover {
+.vault-llm-header-actions {
+	display: flex;
+	gap: var(--size-2-1);
+}
+
+.vault-llm-model-badge {
+	overflow: hidden;
+	padding: var(--size-2-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vault-llm-messages {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-4-4);
+	min-height: 0;
+	overflow-y: auto;
+	padding-bottom: var(--size-4-2);
+}
+
+.vault-llm-empty {
+	margin: auto 0;
+	padding: var(--size-4-4);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.vault-llm-empty-icon {
+	display: flex;
+	justify-content: center;
+	margin-bottom: var(--size-4-2);
+	color: var(--text-faint);
+}
+
+.vault-llm-empty-icon svg {
+	width: var(--icon-xl);
+	height: var(--icon-xl);
+}
+
+.vault-llm-empty-title {
+	margin-bottom: var(--size-4-2);
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+	text-align: center;
+}
+
+.vault-llm-empty ul {
+	margin: 0;
+	padding-inline-start: var(--size-4-5);
+}
+
+.vault-llm-turn {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.vault-llm-message {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	user-select: text;
+}
+
+.vault-llm-message.mod-user {
+	align-self: flex-end;
+	max-width: 90%;
 	background-color: var(--background-modifier-hover);
 }
 
-.vault-llm-sources-title {
-	font-size: 0.9em;
-	font-weight: 600;
-	color: var(--text-normal);
-	display: flex;
-	align-items: center;
+.vault-llm-message.mod-assistant {
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
 }
 
-.vault-llm-sources-icon {
-	margin-right: 8px;
-	font-size: 0.8em;
-	width: 12px;
-	height: 12px;
-	text-align: center;
-	display: inline-block;
-	transition: transform 0.2s ease;
+.vault-llm-message-text {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
-.vault-llm-sources-content {
-	max-height: 200px;
-	overflow-y: auto;
-	padding: 8px 10px;
-	transition: max-height 0.2s ease, padding 0.2s ease;
+.vault-llm-message-meta {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
 }
 
-.vault-llm-sources-collapsed {
-	max-height: 0;
-	padding: 0 10px;
-	overflow: hidden;
+.vault-llm-answer {
+	overflow-wrap: anywhere;
 }
 
-.vault-llm-sources-list {
-	list-style-type: none;
-	margin: 0;
-	padding: 0;
+.vault-llm-answer > :first-child {
+	margin-top: var(--size-4-1);
 }
 
-.vault-llm-sources-list li {
-	padding: 3px 0;
-	margin: 0;
-	font-size: 0.85em;
+.vault-llm-answer > :last-child {
+	margin-bottom: 0;
+}
+
+.vault-llm-loading {
+	padding: var(--size-4-1) 0;
 	color: var(--text-muted);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.vault-llm-sources-list li:last-child {
-	border-bottom: none;
-}
-
-.vault-llm-source-file {
-	font-family: var(--font-monospace);
-	word-break: break-all;
-}
-
-/* Vault LLM Assistant Styles */
-
-.vault-llm-assistant-modal textarea {
-	width: 100%;
-}
-
-.vault-llm-button-container {
-	margin-top: 10px;
-}
-
-.vault-llm-button-container button + button {
-	margin-left: 10px;
-}
-
-.vault-llm-wide-dropdown {
-	min-width: 200px;
-}
-
-.vault-llm-apikey-container {
-	display: flex;
-	width: 100%;
-}
-
-.vault-llm-apikey-input {
-	flex-grow: 1;
-}
-
-.vault-llm-visibility-toggle {
-	margin-left: 8px;
-}
-
-.vault-llm-slider-container {
-	display: flex;
-	align-items: center;
-	width: 100%;
-}
-
-.vault-llm-slider {
-	flex-grow: 1;
-}
-
-.vault-llm-slider-value {
-	margin-left: 10px;
-	min-width: 40px;
-	text-align: right;
-}
-
-.vault-llm-folder-section {
-	margin-top: 20px;
-}
-
-.vault-llm-folder-subsection {
-	margin-bottom: 15px;
-}
-
-.vault-llm-section-header {
-	margin-bottom: 8px;
-}
-
-.vault-llm-section-desc {
-	margin-top: 0;
-	opacity: 0.8;
-}
-
-.vault-llm-folder-input-container {
-	display: flex;
-	margin-top: 8px;
-}
-
-.vault-llm-folder-textbox {
-	flex-grow: 1;
-}
-
-.vault-llm-folder-add-button {
-	margin-left: 8px;
-}
-
-.vault-llm-excluded-list {
-	margin: 8px 0;
-}
-
-.vault-llm-folder-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 6px;
-	padding: 4px;
-	border-radius: 4px;
-	background-color: var(--background-secondary);
-}
-
-.vault-llm-folder-path {
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.vault-llm-folder-remove-button {
-	margin-left: 8px;
-}
-
-.vault-llm-empty-list {
-	opacity: 0.6;
 	font-style: italic;
 }
 
-/* Model Badge */
-.vault-llm-model-badge {
-	font-size: 0.75em;
-	padding: 2px 6px;
-	border-radius: 4px;
-	background-color: var(--background-modifier-border);
-	color: var(--text-muted);
-	margin-left: 8px;
+.vault-llm-dots::after {
 	display: inline-block;
-	vertical-align: middle;
+	width: 1.5em;
+	animation: vault-llm-dots 1.2s steps(4, end) infinite;
+	content: "";
+	text-align: left;
+}
+
+@keyframes vault-llm-dots {
+	0% {
+		content: "";
+	}
+
+	25% {
+		content: ".";
+	}
+
+	50% {
+		content: "..";
+	}
+
+	75% {
+		content: "...";
+	}
+}
+
+.vault-llm-sources {
+	margin: var(--size-4-1) 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.vault-llm-sources summary {
+	cursor: pointer;
+}
+
+.vault-llm-sources ul {
+	max-height: 12em;
+	margin: var(--size-4-1) 0 0;
+	overflow-y: auto;
+	padding-inline-start: var(--size-4-5);
+}
+
+.vault-llm-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--size-4-1);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-left: 3px solid var(--text-error);
+	border-radius: var(--radius-s);
+	background-color: var(--background-secondary);
+}
+
+.vault-llm-error-title {
+	color: var(--text-error);
+	font-weight: var(--font-semibold);
+}
+
+.vault-llm-error-details {
+	overflow-wrap: anywhere;
+}
+
+.vault-llm-error-hint {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.vault-llm-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--size-2-1);
+	margin-top: var(--size-4-1);
+}
+
+.vault-llm-composer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	flex-shrink: 0;
+}
+
+.vault-llm-input {
+	width: 100%;
+	min-height: 4.5em;
+	resize: vertical;
+}
+
+.vault-llm-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.vault-llm-spacer {
+	flex: 1 1 auto;
+}
+
+.vault-llm-controls button.is-loading {
+	opacity: 0.6;
+	cursor: progress;
+}
+
+.vault-llm-modal-input {
+	width: 100%;
+	resize: vertical;
+}
+
+.vault-llm-modal-hint {
+	margin-bottom: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.vault-llm-status {
+	cursor: pointer;
+}
+
+.vault-llm-setting-textarea {
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}
+
+.vault-llm-setting-textarea .setting-item-control {
+	flex: 1 1 100%;
+}
+
+.vault-llm-setting-textarea textarea {
+	width: 100%;
 	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+}
+
+.vault-llm-templates-help {
+	padding-bottom: var(--size-4-2);
+}
+
+.vault-llm-template-editor {
+	margin-bottom: var(--size-4-3);
+	padding: 0 var(--size-4-3);
+	border-left: 2px solid var(--interactive-accent);
 }

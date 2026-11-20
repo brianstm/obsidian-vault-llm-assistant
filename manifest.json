@@ -1,9 +1,9 @@
 {
 	"id": "vault-llm-assistant",
 	"name": "Vault LLM Assistant",
-	"version": "1.0.11",
-	"minAppVersion": "1.7.6",
-	"description": "Uses AI to answer questions and create notes about your vault with proper citations",
+	"version": "1.1.0",
+	"minAppVersion": "1.11.4",
+	"description": "Chat with your vault, get answers that link to your notes, and write or edit notes with OpenAI, Claude, Gemini, Groq, NVIDIA NIM, OpenRouter, local models and more.",
 	"author": "Brians Tjipto",
 	"authorUrl": "https://github.com/brianstm",
 	"fundingUrl": "",

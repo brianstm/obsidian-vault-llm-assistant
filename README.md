@@ -1,32 +1,26 @@
 # <div align="center">Vault LLM Assistant for Obsidian</div>
 
 <div align="center">
-Query your Obsidian vault using AI, get contextual answers with proper citations, and create new notes on specific topics.
+Chat with your Obsidian notes using AI. Get answers that link back to your notes, write new notes, and clean up your writing with prompt templates. Works with OpenAI, Claude, Gemini, Groq, NVIDIA NIM, OpenRouter, local models and more.
 </div>
 
 <br />
 
 <div align="center">
   <a href="https://github.com/brianstm/obsidian-vault-llm-assistant/releases">
-    <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />
-  </a>
-</div>
+    <img src="https://img.shields.io/github/v/release/brianstm/obsidian-vault-llm-assistant?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />## Features
 
-## Features
+- **Chat with your vault.** Ask a question in the sidebar and get an answer with links to the notes it used. You can keep asking follow-up questions in the same chat.
+- **Finds the right notes for you.** It looks for the notes that best match your question and only sends those, so it works fine with big vaults. You can also stick to the note you have open, or leave your notes out.
+- **Writes notes.** Switch to "Write note" and give it a topic. It drafts a full note and can pull from what you already have.
+- **Prompt templates.** Summarize, improve writing, fix spelling and grammar, keep writing, pull out action items, suggest tags, explain or translate. You can make your own too.
+- **Lots of providers.** OpenAI, Claude, Gemini, Groq, NVIDIA NIM, OpenRouter, Mistral, DeepSeek, xAI, LM Studio, Ollama, or any server that works with the OpenAI API.
+- **Always up to date models.** The model list comes straight from your provider, so new models show up without waiting for a plugin update.
+- **Your key stays safe.** API keys are kept in Obsidian's secret storage, not in the plugin's data file.
+- Copy an answer, drop it into your note at the cursor, turn it into a new note, or save the whole chat.
+- Can also send images from your notes to models that support them.
 
-- Ask questions about your vault's content and get AI-generated answers
-- Create comprehensive notes on any topic with optional vault context integration
-- Toggle between Query mode and Create mode with a simple dropdown
-- Choose whether to include vault content in your prompts
-- Results include citations and links back to your original notes
-- Copy results as text or markdown with one click
-- Create new notes from responses with AI-generated titles
-- Support for OpenAI GPT, Google Gemini, and Anthropic Claude models
-- Support for local LLM (LM Studio and Ollama)
-- Configure which files and folders to include or exclude from scanning
-- Highlight and copy results easily
-
-For a detailed list of changes between versions, see the [Changelog](CHANGELOG.md).
+See the [Changelog](CHANGELOG.md) for what changed in each version.
 
 ## Screenshots
 
@@ -36,100 +30,129 @@ For a detailed list of changes between versions, see the [Changelog](CHANGELOG.m
 
 ## Installation
 
-### From Obsidian Community Plugins
+### From Community plugins
 
-1. Open Obsidian Settings → Community Plugins or use this link [https://obsidian.md/plugins?id=vault-llm-assistant](https://obsidian.md/plugins?id=vault-llm-assistant)
-2. Disable Safe Mode if necessary
-3. Click "Browse" and search for "Vault LLM Assistant"
-4. Click Install and enable the plugin
+1. Open Settings → Community plugins in Obsidian, or use this link: [https://obsidian.md/plugins?id=vault-llm-assistant](https://obsidian.md/plugins?id=vault-llm-assistant)
+2. Turn off Restricted mode if it's on
+3. Select "Browse" and search for "Vault LLM Assistant"
+4. Install it and turn it on
 
-### Manual Installation
+You need Obsidian 1.11.4 or newer.
 
-1. Download the latest release from the [GitHub releases page](https://github.com/brianstm/obsidian-vault-llm-assistant/releases/)
-2. Extract the ZIP file to your vault's `.obsidian/plugins/` directory
-3. Restart Obsidian and enable the plugin in Settings → Community Plugins
+### Manual install
 
-### Required Dependencies
+1. Download `main.js`, `manifest.json` and `styles.css` from the latest [release](https://github.com/brianstm/obsidian-vault-llm-assistant/releases/)
+2. Put them in `.obsidian/plugins/vault-llm-assistant/` inside your vault
+3. Restart Obsidian and turn the plugin on in Settings → Community plugins
 
-After installation, install the required dependencies:
+## Getting started
 
-```bash
-cd [your-vault]/.obsidian/plugins/obsidian-vault-llm-assistant
-npm install
-```
+1. Open the plugin settings and pick a **provider**.
+2. Add your **API key**. Click the key field to make a new secret, or pick one you've already saved in Obsidian.
+3. The plugin loads the models your key can use. Pick one from the **Model** list.
+4. Hit **Test** to make sure it all works.
+5. Open the chat from the ribbon icon, the status bar, or the "Open chat" command.
 
-## Usage
+## Providers
 
-### Basic Usage
+| Provider | Where to get a key | Good to know |
+| --- | --- | --- |
+| OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | GPT and o-series models, Pro models included |
+| Anthropic Claude | [platform.claude.com](https://platform.claude.com/settings/keys) | All current Claude models |
+| Google Gemini | [aistudio.google.com](https://aistudio.google.com/apikey) | All Gemini models your key can use |
+| Groq | [console.groq.com](https://console.groq.com/keys) | Open models that run really fast |
+| NVIDIA NIM | [build.nvidia.com](https://build.nvidia.com/settings/api-keys) | Use the hosted models, or point the base URL at your own NIM |
+| OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) | Hundreds of models with one key |
+| Mistral AI | [console.mistral.ai](https://console.mistral.ai/api-keys) | Mistral, Magistral and Codestral |
+| DeepSeek | [platform.deepseek.com](https://platform.deepseek.com/api_keys) | DeepSeek Chat and Reasoner |
+| xAI Grok | [console.x.ai](https://console.x.ai) | Grok models |
+| LM Studio | no key needed | Runs on your computer. Turn on the local server in LM Studio |
+| Ollama | no key needed | Runs on your computer. Pull a model first, like `ollama pull llama3.2` |
+| Custom | optional | Any server that works with the OpenAI chat API, like vLLM, LiteLLM, Together or Fireworks |
 
-1. Click the Vault LLM Assistant icon in the left sidebar ribbon
-2. Select your desired mode from the dropdown (Query or Create)
-3. Optionally toggle "Use vault content" to include or exclude your vault's content in prompts
-4. Type your question or topic
-5. Click "Ask" (in Query mode) or "Create" (in Create mode) or press Ctrl+Enter (Cmd+Enter on Mac)
-6. View the AI-generated response with citations to your notes
+Every provider has a **Base URL** setting, so you can send requests through a proxy or your own server too.
 
-### Modes
+The model list is loaded from the provider when you open the settings, and refreshed once a day. If a brand new model is missing, hit the refresh button next to the list. You can also pick "Other" and type any model name.
 
-- **Query Mode**: Ask questions about your vault's content and get AI-generated answers
-- **Create Mode**: Generate comprehensive notes on any topic, with or without using your vault content as context
+## Using it
 
-### Response Actions
+### Chat
 
-After receiving a response, you can:
+Type your question and press **Cmd+Enter** (Ctrl+Enter on Windows and Linux) to send it. Plain Enter adds a new line.
 
-- **Highlight and copy text**: Select text normally as the response is fully selectable
-- **Copy Text**: Click the "Copy Text" button to copy the response as plain text
-- **Copy Markdown**: Click the "Copy Markdown" button to copy the response with markdown formatting
-- **Create Note**: Click the "Create Note" button to save the response as a new note in your vault
+Under the text box you can pick:
 
-### Configuration Options
+- **Mode.** "Ask" answers questions. "Write note" drafts a new note on a topic.
+- **Notes.** "Vault notes" finds the notes that match your question. "Current note" uses the note you have open (and the notes linked to it, if you want). "No notes" just asks the model.
 
-Access plugin settings via Settings → Community Plugins → Vault LLM Assistant:
+Each answer shows which notes it used. Under the answer you can copy it, put it in your note at the cursor, turn it into a new note, or try again. The buttons at the top start a new chat or save the whole chat as a note.
 
-- **LLM Provider**: Choose between OpenAI GPT and Google Gemini
-- **API Key**: Enter your API key for the selected provider
-- **Model**: Select which AI model to use
-- **Max Tokens & Temperature**: Control response length and creativity
-- **Use Vault Content in Prompts**: Toggle whether to include vault content in AI prompts
-- **Mode**: Select the current mode (Query or Create)
-- **Default Folder for New Notes**: Set where new notes will be saved
-- **Generate Note Titles with LLM**: Toggle whether to use AI for generating note titles
-- **Include/Exclude Folders**: Specify which folders to include or exclude from scanning
+### Prompt templates
 
-## API Keys
+Select some text in a note, right-click, and choose **Run AI prompt template**. You can also use the command palette. Every template gets its own command, so you can give your favorites a hotkey.
 
-- **OpenAI**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-- **Google Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat)
-- **Anthropic Claude**: Get your API key from [Anthropic Console](https://console.anthropic.com/settings/keys)
-- **Local LLM**: Connects to your local instance of LM Studio or Ollama
+Templates can use these placeholders:
 
-## Local Development
+| Placeholder | Gets replaced with |
+| --- | --- |
+| `{{selection}}` | The text you selected, or the whole note if nothing is selected |
+| `{{note}}` | The whole note |
+| `{{before}}` | Everything before the cursor |
+| `{{title}}` | The note's title |
 
-To set up for local development:
+A template can replace your selection, add its result below it, answer in the chat, or make a new note. You can edit, add and delete templates in the settings.
 
-```bash
-# Clone the repository
-git clone https://github.com/brianstm/obsidian-vault-llm-assistant.git
+### Commands
 
-# Enter the project directory
-cd obsidian-vault-llm-assistant
+- Open chat
+- Start a new chat
+- Ask a question about your vault
+- Ask a question about the current note
+- Create a note about a topic
+- Run a prompt template on the selection or note
+- Prompt: *template name* (one for each template)
 
-# Install dependencies
-npm install
+## Settings
 
-# Start development server with hot-reload
-npm run dev
-```
+- **Model provider:** the provider, your API key, the base URL, the model, and a connection test.
+- **Responses:** max tokens, temperature, reasoning effort, and custom instructions that get added to every request.
+- **Vault context:** which notes to use by default, how they're picked, how much text to send, how many notes to send, linked notes, images, and which folders to use or skip.
+- **New notes:** where new notes go, whether the model names them, and the default chat mode.
+- **Prompt templates:** edit, add or bring back the default templates.
+
+## Privacy and network use
+
+The plugin only talks to the internet when you use it:
+
+- When you ask a question, write a note or run a template, your prompt and the notes it picked (plus images, if you turned that on) go to **the provider you chose**, at the base URL in the settings. That provider's privacy terms apply. With LM Studio, Ollama or a local server, nothing leaves your computer.
+- Loading the model list and the "Test" button talk to the same provider.
+- It reads the notes in your vault to find the right ones, and only creates notes when you ask it to. It only writes to your clipboard when you hit copy.
+- No tracking, and no other servers.
+
+Want to keep a folder private? Add it to "Never read these folders" in the settings.
 
 ## Troubleshooting
 
-If you encounter issues:
+- **Key errors:** check your API key in the settings, then hit "Test".
+- **Model not found or missing:** hit the refresh button next to the model list, or type the exact model name.
+- **Answer cut off or empty:** raise "Max tokens". Thinking models use some tokens to think before they answer.
+- **Request too big:** lower "Maximum context size" or "Maximum notes".
+- **LM Studio or Ollama won't connect:** make sure the app is running and the base URL is right. LM Studio uses `http://localhost:1234/v1` and Ollama uses `http://localhost:11434`.
+- For more detail, open the developer console (Cmd+Option+I on macOS, Ctrl+Shift+I elsewhere).
 
-1. Verify your API key is correct and active
-2. Check that you've installed all dependencies with `npm install`
-3. Ensure your API key has access to the models you've selected
-4. Check console logs for specific error messages (Ctrl+Shift+I in Obsidian)
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+```bash
+git clone https://github.com/brianstm/obsidian-vault-llm-assistant.git
+cd obsidian-vault-llm-assistant
+npm install
+npm run dev
+```
+
+pm run dev
+```
 
 ## License
 

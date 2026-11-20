@@ -2,6 +2,48 @@
 
 All notable changes to the Vault LLM Assistant plugin for Obsidian will be documented in this file.
 
+## 1.1.0 - 2026-11-20
+
+### New features
+
+- New providers: Groq, NVIDIA NIM (hosted or your own), OpenRouter, Mistral AI, DeepSeek, xAI Grok, and any server that works with the OpenAI API (vLLM, LiteLLM, Together, Fireworks and others). Every provider has a base URL you can change.
+- Model lists now come straight from your provider, so new models show up on their own. The list refreshes once a day, there's a refresh button, and you can still type any model name.
+- The chat remembers the conversation, so you can ask follow-up questions. You can start a new chat or save the whole thing as a note.
+- Press Cmd+Enter (Ctrl+Enter on Windows and Linux) to send. Enter now adds a new line.
+- Smarter note picking. Instead of sending your whole vault, it finds the notes that best match your question (file names, headings, tags and links count extra) and sends those, up to a size limit you choose.
+- Prompt templates for the selected text or the whole note: summarize, improve writing, fix spelling and grammar, keep writing, pull out action items, suggest tags, explain and translate. You can add your own and run them from the command palette, the right-click menu or a hotkey.
+- Put an answer into your note at the cursor.
+- Custom instructions that get added to every request.
+- A reasoning effort setting for Claude and OpenAI's reasoning models.
+- Hover previews and clickable links for the notes an answer used.
+
+### Improvements
+
+- API keys now live in Obsidian's secret storage instead of the plugin's data file. Your old keys move over on their own the first time you load the new version.
+- The Gemini key goes in a request header now, not in the URL.
+- Error messages are clearer and tell you how to fix the problem, and there's a "Try again" button.
+- "Only read these folders" takes more than one folder now, and a folder no longer matches other folders that just start with the same name.
+- New notes never overwrite a note with the same name.
+- The status bar shows the model you're using. Click it to open the chat.
+- Opening the chat doesn't wipe your last conversation anymore.
+
+### Bug fixes
+
+- Note titles now work with Claude, LM Studio and Ollama.
+- GPT-5 and o-series models no longer fail because of the temperature setting.
+- OpenAI "Pro" models now return their answer.
+- Claude 4.7 and newer no longer fail because of temperature, and answers aren't empty when the model thinks first.
+- If a Gemini thinking model runs out of tokens, you get a clear message instead of a blank answer.
+- `<think>` blocks from models like DeepSeek R1 and Qwen3 no longer show up in answers.
+
+### Maintenance
+
+- Split the code into smaller files and fixed every warning from Obsidian's plugin review checks.
+- Rewrote the stylesheet with Obsidian's CSS variables. No duplicate selectors or `!important` anymore.
+- Updated the build tools (TypeScript 5, ESLint 9, esbuild 0.25) and got rid of the vulnerable dev packages.
+- Release files now come with GitHub build attestations, and every pull request runs lint and build.
+- Needs Obsidian 1.11.4 or newer.
+
 ## 1.0.11 - 2026-03-26
 
 ### New Features
